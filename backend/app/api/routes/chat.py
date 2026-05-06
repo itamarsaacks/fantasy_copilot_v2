@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agent.agent import agent
+from app.agent.agent import get_agent
 from app.db.engine import get_session
 from app.db.models import League, User
 from app.security import get_current_user
@@ -45,6 +45,7 @@ async def chat(
             "league_id": league.id,
         }
     }
+    agent = get_agent(league.scoring_type)
     result = await agent.ainvoke(
         {"messages": [{"role": "user", "content": body.message}]},
         config=config,
