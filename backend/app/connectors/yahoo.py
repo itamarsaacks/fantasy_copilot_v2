@@ -201,16 +201,24 @@ def _parse_teams(payload: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def _parse_one_team(team_entry: list[Any]) -> dict[str, Any] | None:
-    """Each team entry shape: [[meta_dicts...], {"team_standings": {...}}, ...]."""
+    """Each team entry shape: [[meta_dicts...], {"team_standings": {...}}, ...].
+
+    Yahoo packs a LOT into the metadata dicts on the first element:
+      team_key, team_id, name, url, team_logos, waiver_priority, faab_balance,
+      division_id, number_of_moves, number_of_trades, roster_adds,
+      league_scoring_type, has_draft_grade, draft_grade, draft_recap_url,
+      managers, clinched_playoffs, is_owned_by_current_login.
+    """
     meta: dict[str, Any] = {}
     standings: dict[str, Any] = {}
     is_user = False
     manager_name: str | None = None
+    manager_id: str | None = None
+    logo_url: str | None = None
 
     if not team_entry:
         return None
 
-    # First element is a list of metadata dicts; later elements are dicts with a single key.
     first = team_entry[0]
     if isinstance(first, list):
         for sub in first:
@@ -223,6 +231,12 @@ def _parse_one_team(team_entry: list[Any]) -> dict[str, Any] | None:
                 if isinstance(managers, list) and managers:
                     mgr = managers[0].get("manager", {}) if isinstance(managers[0], dict) else {}
                     manager_name = mgr.get("nickname")
+                    manager_id = mgr.get("manager_id")
+            if "team_logos" in sub:
+                logos = sub["team_logos"]
+                if isinstance(logos, list) and logos:
+                    logo_block = logos[0].get("team_logo", {}) if isinstance(logos[0], dict) else {}
+                    logo_url = logo_block.get("url") if isinstance(logo_block, dict) else None
             meta.update({k: v for k, v in sub.items() if not isinstance(v, (list, dict))})
 
     for item in team_entry[1:]:
@@ -239,18 +253,38 @@ def _parse_one_team(team_entry: list[Any]) -> dict[str, Any] | None:
         "team_id_in_league": int(meta.get("team_id", 0)),
         "name": meta.get("name", "Unknown Team"),
         "manager_name": manager_name,
+        "manager_id": manager_id,
+        "logo_url": logo_url,
         "is_user_team": is_user,
         "wins": _safe_int(outcome_totals.get("wins")),
         "losses": _safe_int(outcome_totals.get("losses")),
         "ties": _safe_int(outcome_totals.get("ties")),
         "rank": _safe_int(standings.get("rank") if standings else None),
+        "points_for": _safe_float((standings or {}).get("points_for")),
+        "points_against": _safe_float((standings or {}).get("points_against")),
+        "faab_balance": _safe_int(meta.get("faab_balance")),
+        "waiver_priority": _safe_int(meta.get("waiver_priority")),
+        "clinched_playoffs": bool(int(meta["clinched_playoffs"]))
+        if meta.get("clinched_playoffs") not in (None, "")
+        else None,
+        "division_id": str(meta["division_id"]) if meta.get("division_id") not in (None, "") else None,
+        "number_of_moves": _safe_int(meta.get("number_of_moves")),
+        "number_of_trades": _safe_int(meta.get("number_of_trades")),
+        "draft_grade": meta.get("draft_grade") or None,
     }
 
 
 async def fetch_team_roster(access_token: str, team_key: str) -> list[dict[str, Any]]:
-    """Return all players currently on a team's roster, with player identity."""
+    """Return all players currently on a team's roster, with rich player metadata.
+
+    Uses /team/{key}/roster/players;out=... to get percent_owned, ranks,
+    draft_analysis inline rather than making a second call per player.
+    """
     headers = {"Authorization": f"Bearer {access_token}", "Accept": "application/json"}
-    url = f"{FANTASY_API_BASE}/team/{team_key}/roster?format=json"
+    url = (
+        f"{FANTASY_API_BASE}/team/{team_key}/roster/players;"
+        f"out=percent_owned,percent_started,ranks,draft_analysis?format=json"
+    )
     async with httpx.AsyncClient(timeout=15) as client:
         resp = await client.get(url, headers=headers)
     resp.raise_for_status()
@@ -276,7 +310,8 @@ async def fetch_league_free_agents(
     while True:
         url = (
             f"{FANTASY_API_BASE}/league/{league_key}/players;"
-            f"status=A;sort=AR;count={page_size};start={start}?format=json"
+            f"status=A;sort=AR;count={page_size};start={start};"
+            f"out=percent_owned,percent_started,ranks,draft_analysis?format=json"
         )
         async with httpx.AsyncClient(timeout=20) as client:
             resp = await client.get(url, headers=headers)
@@ -314,11 +349,21 @@ def _parse_players_block(players: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def _parse_one_player(player_entry: list[Any]) -> dict[str, Any] | None:
-    """A player entry is [meta_list, {selected_position?}, {percent_owned?}, ...]."""
+    """A player entry is [meta_list, {selected_position?}, {percent_owned?}, ...].
+
+    With ;out=percent_owned,percent_started,ranks,draft_analysis the entry
+    additionally has dicts for each of those sub-resources.
+    """
     meta: dict[str, Any] = {}
     selected_position: str | None = None
     percent_owned: float | None = None
+    percent_owned_delta: float | None = None
+    percent_started: float | None = None
     waiver_status: str | None = None
+    draft_avg_pick: float | None = None
+    draft_avg_round: float | None = None
+    draft_avg_cost: float | None = None
+    draft_percent_drafted: float | None = None
 
     first = player_entry[0] if player_entry else None
     if isinstance(first, list):
@@ -355,12 +400,18 @@ def _parse_one_player(player_entry: list[Any]) -> dict[str, Any] | None:
             if isinstance(own, dict):
                 waiver_status = own.get("ownership_type")
         if "percent_owned" in item:
-            po = item["percent_owned"]
-            if isinstance(po, dict):
-                try:
-                    percent_owned = float(po.get("value", 0))
-                except (TypeError, ValueError):
-                    pass
+            po = _flatten_yahoo_block(item["percent_owned"])
+            percent_owned = _safe_float(po.get("value"))
+            percent_owned_delta = _safe_float(po.get("delta"))
+        if "percent_started" in item:
+            ps = _flatten_yahoo_block(item["percent_started"])
+            percent_started = _safe_float(ps.get("value"))
+        if "draft_analysis" in item:
+            da = _flatten_yahoo_block(item["draft_analysis"])
+            draft_avg_pick = _safe_float(da.get("average_pick"))
+            draft_avg_round = _safe_float(da.get("average_round"))
+            draft_avg_cost = _safe_float(da.get("average_cost"))
+            draft_percent_drafted = _safe_float(da.get("percent_drafted"))
 
     if not meta.get("player_key"):
         return None
@@ -371,6 +422,7 @@ def _parse_one_player(player_entry: list[Any]) -> dict[str, Any] | None:
         primary_position = eligible_positions[0]
 
     return {
+        # Player identity
         "yahoo_player_key": meta["player_key"],
         "yahoo_player_id": _safe_int(meta.get("player_id")) or 0,
         "full_name": meta.get("full_name") or "Unknown",
@@ -381,12 +433,45 @@ def _parse_one_player(player_entry: list[Any]) -> dict[str, Any] | None:
         "nba_team_abbr": meta.get("editorial_team_abbr"),
         "status": meta.get("status") or None,
         "image_url": meta.get("image_url"),
+        "uniform_number": meta.get("uniform_number"),
+        # Yahoo-global ownership data (set when ;out=percent_owned was used)
+        "percent_owned": percent_owned,
+        "percent_owned_delta": percent_owned_delta,
+        "percent_started": percent_started,
+        # Draft analysis (set when ;out=draft_analysis was used)
+        "draft_avg_pick": draft_avg_pick,
+        "draft_avg_round": draft_avg_round,
+        "draft_avg_cost": draft_avg_cost,
+        "draft_percent_drafted": draft_percent_drafted,
         # Roster-context fields (only set on roster fetches):
         "selected_position": selected_position,
         # FA-context fields (only set on FA fetches):
         "waiver_status": waiver_status,
-        "percent_owned": percent_owned,
     }
+
+
+def _flatten_yahoo_block(block: Any) -> dict[str, Any]:
+    """Yahoo represents many sub-resources as either a list of single-key dicts
+    or a flat dict. Normalize to a flat dict.
+    """
+    if isinstance(block, dict):
+        return block
+    if isinstance(block, list):
+        merged: dict[str, Any] = {}
+        for item in block:
+            if isinstance(item, dict):
+                merged.update(item)
+        return merged
+    return {}
+
+
+def _safe_float(value: Any) -> float | None:
+    if value is None or value == "":
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _safe_int(value: Any) -> int | None:

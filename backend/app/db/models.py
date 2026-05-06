@@ -117,13 +117,27 @@ class Team(Base):
     team_id_in_league: Mapped[int] = mapped_column(Integer, nullable=False)
     name: Mapped[str] = mapped_column(String, nullable=False)
     manager_name: Mapped[str | None] = mapped_column(String, nullable=True)
+    manager_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    logo_url: Mapped[str | None] = mapped_column(String, nullable=True)
     is_user_team: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
-    # Standings (h2h leagues mostly)
+    # Standings — h2h leagues use W/L/T; points leagues use points_for/against.
     wins: Mapped[int | None] = mapped_column(Integer, nullable=True)
     losses: Mapped[int | None] = mapped_column(Integer, nullable=True)
     ties: Mapped[int | None] = mapped_column(Integer, nullable=True)
     rank: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    points_for: Mapped[float | None] = mapped_column(Numeric(12, 2), nullable=True)
+    points_against: Mapped[float | None] = mapped_column(Numeric(12, 2), nullable=True)
+    clinched_playoffs: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    division_id: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    # Waiver / FAAB economics
+    faab_balance: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    waiver_priority: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    number_of_moves: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    number_of_trades: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    draft_grade: Mapped[str | None] = mapped_column(String, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
@@ -160,6 +174,18 @@ class Player(Base):
     nba_team_abbr: Mapped[str | None] = mapped_column(String, nullable=True)
     status: Mapped[str | None] = mapped_column(String, nullable=True)  # IL, GTD, OUT, ...
     image_url: Mapped[str | None] = mapped_column(String, nullable=True)
+    uniform_number: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    # Yahoo-global ownership signals (latest known value at last sync).
+    percent_owned: Mapped[float | None] = mapped_column(Numeric(5, 2), nullable=True)
+    percent_owned_delta: Mapped[float | None] = mapped_column(Numeric(5, 2), nullable=True)
+    percent_started: Mapped[float | None] = mapped_column(Numeric(5, 2), nullable=True)
+
+    # Draft-analysis (Yahoo-global, set during preseason; informative for trades).
+    draft_avg_pick: Mapped[float | None] = mapped_column(Numeric(6, 2), nullable=True)
+    draft_avg_round: Mapped[float | None] = mapped_column(Numeric(5, 2), nullable=True)
+    draft_avg_cost: Mapped[float | None] = mapped_column(Numeric(6, 2), nullable=True)
+    draft_percent_drafted: Mapped[float | None] = mapped_column(Numeric(5, 2), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
@@ -215,7 +241,6 @@ class FreeAgent(Base):
     )
     # Yahoo distinguishes: A=available, FA=free agent, W=on waivers
     waiver_status: Mapped[str | None] = mapped_column(String, nullable=True)
-    percent_owned: Mapped[float | None] = mapped_column(Numeric(5, 2), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), server_default=func.now(), nullable=False

@@ -123,11 +123,22 @@ async def _sync_teams(session: AsyncSession, league: League, access_token: str) 
         team.team_id_in_league = td["team_id_in_league"]
         team.name = td["name"]
         team.manager_name = td["manager_name"]
+        team.manager_id = td.get("manager_id")
+        team.logo_url = td.get("logo_url")
         team.is_user_team = td["is_user_team"]
         team.wins = td["wins"]
         team.losses = td["losses"]
         team.ties = td["ties"]
         team.rank = td["rank"]
+        team.points_for = td.get("points_for")
+        team.points_against = td.get("points_against")
+        team.faab_balance = td.get("faab_balance")
+        team.waiver_priority = td.get("waiver_priority")
+        team.clinched_playoffs = td.get("clinched_playoffs")
+        team.division_id = td.get("division_id")
+        team.number_of_moves = td.get("number_of_moves")
+        team.number_of_trades = td.get("number_of_trades")
+        team.draft_grade = td.get("draft_grade")
     await session.flush()
 
 
@@ -206,7 +217,6 @@ async def _sync_free_agents(session: AsyncSession, league: League, access_token:
                 league_id=league.id,
                 player_id=player.id,
                 waiver_status=pdata.get("waiver_status"),
-                percent_owned=pdata.get("percent_owned"),
             )
         )
     await session.flush()
@@ -214,7 +224,12 @@ async def _sync_free_agents(session: AsyncSession, league: League, access_token:
 
 
 def _apply_player_fields(player: Player, pdata: dict) -> None:
-    """Update a Player ORM row from a parsed connector dict (idempotent)."""
+    """Update a Player ORM row from a parsed connector dict (idempotent).
+
+    Only overwrites Yahoo-global fields when the source actually provided them
+    (the FA endpoint provides percent_owned + draft_analysis; the roster
+    endpoint also provides them via ;out=). Identity fields are always set.
+    """
     player.yahoo_player_id = pdata.get("yahoo_player_id") or 0
     player.full_name = pdata.get("full_name") or "Unknown"
     player.first_name = pdata.get("first_name")
@@ -224,3 +239,19 @@ def _apply_player_fields(player: Player, pdata: dict) -> None:
     player.nba_team_abbr = pdata.get("nba_team_abbr")
     player.status = pdata.get("status")
     player.image_url = pdata.get("image_url")
+    player.uniform_number = pdata.get("uniform_number")
+
+    if pdata.get("percent_owned") is not None:
+        player.percent_owned = pdata["percent_owned"]
+    if pdata.get("percent_owned_delta") is not None:
+        player.percent_owned_delta = pdata["percent_owned_delta"]
+    if pdata.get("percent_started") is not None:
+        player.percent_started = pdata["percent_started"]
+    if pdata.get("draft_avg_pick") is not None:
+        player.draft_avg_pick = pdata["draft_avg_pick"]
+    if pdata.get("draft_avg_round") is not None:
+        player.draft_avg_round = pdata["draft_avg_round"]
+    if pdata.get("draft_avg_cost") is not None:
+        player.draft_avg_cost = pdata["draft_avg_cost"]
+    if pdata.get("draft_percent_drafted") is not None:
+        player.draft_percent_drafted = pdata["draft_percent_drafted"]
