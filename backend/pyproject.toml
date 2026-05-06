@@ -1,0 +1,59 @@
+[project]
+name = "fantasy-copilot-backend"
+version = "0.1.0"
+description = "Fantasy NBA Copilot v2 backend"
+requires-python = ">=3.12"
+dependencies = [
+    # Web framework
+    "fastapi[standard]>=0.115",
+    "uvicorn[standard]>=0.32",
+
+    # DB
+    "sqlalchemy[asyncio]>=2.0.36",
+    "asyncpg>=0.30",
+    "alembic>=1.14",
+    "greenlet>=3.0",
+
+    # Validation / config
+    "pydantic>=2.10",
+    "pydantic-settings>=2.6",
+
+    # HTTP
+    "httpx>=0.28",
+
+    # Auth
+    "pyjwt>=2.10",
+    "python-multipart>=0.0.20",
+
+    # Scheduler
+    "apscheduler>=3.10",
+
+    # Agent (Phase 4 — installed now to keep environment stable)
+    "deepagents>=0.0.5",
+    "langchain-anthropic>=0.3",
+    "langsmith>=0.2",
+]
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*"]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "httpx>=0.28",  # used by FastAPI TestClient too
+    "ruff>=0.8",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
