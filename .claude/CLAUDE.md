@@ -28,6 +28,8 @@ Next.js frontend ↔ FastAPI backend (Postgres + Alembic). A LangChain `deepagen
 - If unclear, ask. Don't guess.
 - Verify before claiming done — show real test output and (for UI) screenshots.
 - Propose new skills, never auto-create them.
+- **Before any commit:** run `bash scripts/smoke.sh` and show the output. If it doesn't pass, the work isn't done. See `.claude/skills/before-commit/SKILL.md` for the full ritual.
+- **Verification standard:** "did I prove it works end-to-end, against real data, on the actual running stack?" — not "did the function I changed return the right value in isolation."
 
 ## Local dev
 - DB: `docker compose up -d` (Postgres 16)
