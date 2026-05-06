@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: fantasy_copilot_v2_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: fantasy
+      POSTGRES_PASSWORD: fantasy_dev_password
+      POSTGRES_DB: fantasy_copilot
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fantasy -d fantasy_copilot"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres-data:

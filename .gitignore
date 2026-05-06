@@ -1,0 +1,55 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+
+# Node
+node_modules/
+.next/
+out/
+dist/
+.turbo/
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# DB
+*.db
+*.db-journal
+*.sqlite
+postgres-data/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Logs
+*.log
+.langsmith_cache/
+
+# Alembic local artifacts
+.alembic_temp/
+
+# Test artifacts
+htmlcov/
+.coverage
+coverage.xml
+tests/screenshots/diffs/
+
+# Build artifacts
+build/
+*.tsbuildinfo
