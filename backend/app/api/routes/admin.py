@@ -7,6 +7,8 @@ from __future__ import annotations
 from fastapi import APIRouter, Header, HTTPException, status
 
 from app.config import get_settings
+from app.engine.projection import compute_league_projections
+from app.jobs.sync_stats import sync_league_stats
 from app.jobs.sync_yahoo import sync_league
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -40,5 +42,43 @@ async def sync_now(
         "rosters_synced": result.rosters_synced,
         "roster_players_total": result.roster_players_total,
         "free_agents_synced": result.free_agents_synced,
+        "errors": result.errors,
+    }
+
+
+@router.post("/sync-stats")
+async def sync_stats(
+    user_id: int,
+    league_id: int,
+    coverage: str = "season",
+    x_admin_secret: str | None = Header(default=None),
+):
+    """Fetch per-player stats for all rostered + FA players in a league."""
+    _require_admin(x_admin_secret)
+    result = await sync_league_stats(
+        user_id=user_id, league_id=league_id, coverage=coverage
+    )
+    return {
+        "league_key": result.league_key,
+        "coverage": result.coverage,
+        "players_attempted": result.players_attempted,
+        "players_with_stats": result.players_with_stats,
+        "stat_rows_written": result.stat_rows_written,
+        "errors": result.errors,
+    }
+
+
+@router.post("/compute-projections")
+async def compute_projections(
+    league_id: int,
+    x_admin_secret: str | None = Header(default=None),
+):
+    """Compute projection_cache for one league (points-leagues only for now)."""
+    _require_admin(x_admin_secret)
+    result = await compute_league_projections(league_id=league_id)
+    return {
+        "league_key": result.league_key,
+        "rows_written": result.rows_written,
+        "rows_skipped_no_stats": result.rows_skipped_no_stats,
         "errors": result.errors,
     }

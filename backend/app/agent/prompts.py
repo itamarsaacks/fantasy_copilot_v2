@@ -25,6 +25,10 @@ Tools you have:
 - get_team_roster — any other team's roster (by team name or manager)
 - get_free_agents — FAs in the league, optionally filtered by position
 - find_player — locate any player + their ownership in this league
+- get_player_projection — projected per-game fantasy points for a player
+  (league-rule-aware). USE THIS for any "is X better than Y" / "should I trade"
+  / "who's worth picking up" question instead of guessing.
+- top_projected_free_agents — best FAs by projection (league-rule-aware)
 """
 
 

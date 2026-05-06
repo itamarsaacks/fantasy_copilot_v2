@@ -21,6 +21,10 @@ from app.agent.prompts import build_system_prompt  # noqa: E402
 from app.agent.tools.free_agents import get_free_agents  # noqa: E402
 from app.agent.tools.league import get_league_summary  # noqa: E402
 from app.agent.tools.player import find_player  # noqa: E402
+from app.agent.tools.projections import (  # noqa: E402
+    get_player_projection,
+    top_projected_free_agents,
+)
 from app.agent.tools.roster import get_my_roster  # noqa: E402
 from app.agent.tools.team import get_team_roster  # noqa: E402
 
@@ -30,6 +34,8 @@ ALL_TOOLS = [
     get_team_roster,
     get_free_agents,
     find_player,
+    get_player_projection,
+    top_projected_free_agents,
 ]
 
 MODEL = "anthropic:claude-sonnet-4-6"

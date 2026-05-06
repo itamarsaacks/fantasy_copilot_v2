@@ -300,6 +300,85 @@ def _parse_roster(payload: dict[str, Any]) -> list[dict[str, Any]]:
     return _parse_players_block(players)
 
 
+async def fetch_player_stats(
+    access_token: str,
+    league_key: str,
+    player_keys: list[str],
+    coverage: str = "season",
+) -> dict[str, list[dict[str, Any]]]:
+    """Fetch stats for one batch of players (max 25 player_keys per call).
+
+    Args:
+      league_key: needed because we hit /league/{key}/players for league-scoped
+        stat values (which can differ from raw NBA stats by league rules).
+      player_keys: up to 25 player_keys.
+      coverage: 'season' | 'lastweek' | 'lastmonth' | 'date'. (We pass 'date'
+        elsewhere with a ;date= modifier.)
+
+    Returns: {player_key: [{stat_id, value}, ...]}.
+
+    NOTE: /players;player_keys=...;out=stats;type=X silently drops the type
+    filter — must use /stats;type=X as a path segment.
+    """
+    if not player_keys:
+        return {}
+    if len(player_keys) > 25:
+        raise ValueError("max 25 player_keys per call")
+
+    headers = {"Authorization": f"Bearer {access_token}", "Accept": "application/json"}
+    keys_csv = ",".join(player_keys)
+    url = (
+        f"{FANTASY_API_BASE}/league/{league_key}/players;player_keys={keys_csv}/"
+        f"stats;type={coverage}?format=json"
+    )
+    async with httpx.AsyncClient(timeout=20) as client:
+        resp = await client.get(url, headers=headers)
+    resp.raise_for_status()
+    return _parse_player_stats(resp.json())
+
+
+def _parse_player_stats(payload: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
+    """Return {player_key: [{stat_id, value}, ...]}."""
+    out: dict[str, list[dict[str, Any]]] = {}
+    try:
+        players = payload["fantasy_content"]["league"][1]["players"]
+    except (KeyError, IndexError, TypeError):
+        return out
+    if not isinstance(players, dict):
+        return out
+    count = int(players.get("count", 0))
+    for i in range(count):
+        wrapper = players.get(str(i), {}).get("player")
+        if not wrapper or not isinstance(wrapper, list):
+            continue
+        # Find player_key in the meta list
+        player_key: str | None = None
+        first = wrapper[0]
+        if isinstance(first, list):
+            for sub in first:
+                if isinstance(sub, dict) and sub.get("player_key"):
+                    player_key = sub["player_key"]
+                    break
+        if not player_key:
+            continue
+        # Find player_stats block in the trailing dicts
+        stats_list: list[dict[str, Any]] = []
+        for item in wrapper[1:]:
+            if isinstance(item, dict) and "player_stats" in item:
+                ps = item["player_stats"]
+                stats = ps.get("stats") if isinstance(ps, dict) else None
+                if isinstance(stats, list):
+                    for stat_wrapper in stats:
+                        if isinstance(stat_wrapper, dict) and "stat" in stat_wrapper:
+                            s = stat_wrapper["stat"]
+                            if isinstance(s, dict) and "stat_id" in s:
+                                stats_list.append(
+                                    {"stat_id": str(s["stat_id"]), "value": s.get("value")}
+                                )
+        out[player_key] = stats_list
+    return out
+
+
 async def fetch_league_free_agents(
     access_token: str, league_key: str, page_size: int = 25
 ) -> list[dict[str, Any]]:
