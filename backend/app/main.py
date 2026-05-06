@@ -8,6 +8,7 @@ from sqlalchemy import text
 
 from app.api.routes import admin as admin_routes
 from app.api.routes import auth as auth_routes
+from app.api.routes import chat as chat_routes
 from app.config import get_settings
 from app.db.engine import engine
 
@@ -34,6 +35,7 @@ app.add_middleware(
 
 app.include_router(auth_routes.router)
 app.include_router(admin_routes.router)
+app.include_router(chat_routes.router)
 
 
 @app.get("/health")
