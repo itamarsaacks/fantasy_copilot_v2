@@ -1,7 +1,4 @@
-"""Yahoo Fantasy Sports API client — OAuth dance + league discovery.
-
-Phase 2 scope: just the auth flow + fetching the user's NBA leagues. Roster /
-free-agent / stats fetching lands in Phase 3.
+"""Yahoo Fantasy Sports API client — OAuth + league/team/roster/FA fetch.
 
 Hard-won notes (do NOT lose):
 - /players;player_keys=.../stats;type=X works. ;out=stats;type=X silently
@@ -9,6 +6,9 @@ Hard-won notes (do NOT lose):
 - The Fantasy API returns deeply nested mixed list/dict structures. Helpers
   here flatten them.
 - 2025-26 NBA game key = 466. We hard-code it; revisit each season.
+- Yahoo no longer reliably returns xoauth_yahoo_guid in the token response.
+  Use fetch_user_guid via /users;use_login=1 instead.
+- FA fetching is paginated; default count=25, max=25. Use start= to page.
 """
 
 from __future__ import annotations
@@ -167,6 +167,235 @@ def _parse_leagues(payload: dict[str, Any]) -> list[dict[str, Any]]:
             if parsed:
                 leagues_out.append(parsed)
     return leagues_out
+
+
+async def fetch_teams(access_token: str, league_key: str) -> list[dict[str, Any]]:
+    """Return all teams in a league with metadata.
+
+    Output: list of dicts with team_key, team_id_in_league, name, manager_name,
+    is_user_team, wins, losses, ties, rank.
+    """
+    headers = {"Authorization": f"Bearer {access_token}", "Accept": "application/json"}
+    url = f"{FANTASY_API_BASE}/league/{league_key}/teams;out=standings?format=json"
+    async with httpx.AsyncClient(timeout=15) as client:
+        resp = await client.get(url, headers=headers)
+    resp.raise_for_status()
+    return _parse_teams(resp.json())
+
+
+def _parse_teams(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    try:
+        teams = payload["fantasy_content"]["league"][1]["teams"]
+    except (KeyError, IndexError, TypeError):
+        return []
+    count = int(teams.get("count", 0))
+    for i in range(count):
+        team_entry = teams.get(str(i), {}).get("team")
+        if not team_entry:
+            continue
+        parsed = _parse_one_team(team_entry)
+        if parsed:
+            out.append(parsed)
+    return out
+
+
+def _parse_one_team(team_entry: list[Any]) -> dict[str, Any] | None:
+    """Each team entry shape: [[meta_dicts...], {"team_standings": {...}}, ...]."""
+    meta: dict[str, Any] = {}
+    standings: dict[str, Any] = {}
+    is_user = False
+    manager_name: str | None = None
+
+    if not team_entry:
+        return None
+
+    # First element is a list of metadata dicts; later elements are dicts with a single key.
+    first = team_entry[0]
+    if isinstance(first, list):
+        for sub in first:
+            if not isinstance(sub, dict):
+                continue
+            if "is_owned_by_current_login" in sub:
+                is_user = bool(int(sub["is_owned_by_current_login"]))
+            if "managers" in sub:
+                managers = sub["managers"]
+                if isinstance(managers, list) and managers:
+                    mgr = managers[0].get("manager", {}) if isinstance(managers[0], dict) else {}
+                    manager_name = mgr.get("nickname")
+            meta.update({k: v for k, v in sub.items() if not isinstance(v, (list, dict))})
+
+    for item in team_entry[1:]:
+        if isinstance(item, dict) and "team_standings" in item:
+            standings = item["team_standings"]
+
+    if not meta.get("team_key"):
+        return None
+
+    outcome_totals = (standings or {}).get("outcome_totals") or {}
+
+    return {
+        "team_key": meta["team_key"],
+        "team_id_in_league": int(meta.get("team_id", 0)),
+        "name": meta.get("name", "Unknown Team"),
+        "manager_name": manager_name,
+        "is_user_team": is_user,
+        "wins": _safe_int(outcome_totals.get("wins")),
+        "losses": _safe_int(outcome_totals.get("losses")),
+        "ties": _safe_int(outcome_totals.get("ties")),
+        "rank": _safe_int(standings.get("rank") if standings else None),
+    }
+
+
+async def fetch_team_roster(access_token: str, team_key: str) -> list[dict[str, Any]]:
+    """Return all players currently on a team's roster, with player identity."""
+    headers = {"Authorization": f"Bearer {access_token}", "Accept": "application/json"}
+    url = f"{FANTASY_API_BASE}/team/{team_key}/roster?format=json"
+    async with httpx.AsyncClient(timeout=15) as client:
+        resp = await client.get(url, headers=headers)
+    resp.raise_for_status()
+    return _parse_roster(resp.json())
+
+
+def _parse_roster(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    try:
+        roster_block = payload["fantasy_content"]["team"][1]["roster"]
+        players = roster_block["0"]["players"]
+    except (KeyError, IndexError, TypeError):
+        return []
+    return _parse_players_block(players)
+
+
+async def fetch_league_free_agents(
+    access_token: str, league_key: str, page_size: int = 25
+) -> list[dict[str, Any]]:
+    """Paginated FA fetch. Returns all players with status=A in the league."""
+    headers = {"Authorization": f"Bearer {access_token}", "Accept": "application/json"}
+    out: list[dict[str, Any]] = []
+    start = 0
+    while True:
+        url = (
+            f"{FANTASY_API_BASE}/league/{league_key}/players;"
+            f"status=A;sort=AR;count={page_size};start={start}?format=json"
+        )
+        async with httpx.AsyncClient(timeout=20) as client:
+            resp = await client.get(url, headers=headers)
+        resp.raise_for_status()
+        try:
+            players = resp.json()["fantasy_content"]["league"][1]["players"]
+        except (KeyError, IndexError, TypeError):
+            break
+        page = _parse_players_block(players)
+        if not page:
+            break
+        out.extend(page)
+        if len(page) < page_size:
+            break
+        start += page_size
+        if start > 2000:  # safety: NBA has ~600 players, never more than 2000 FAs
+            break
+    return out
+
+
+def _parse_players_block(players: dict[str, Any]) -> list[dict[str, Any]]:
+    """Players blocks always look like {"count": N, "0": {"player": [...]}, "1": ...}."""
+    out: list[dict[str, Any]] = []
+    if not isinstance(players, dict):
+        return out
+    count = int(players.get("count", 0))
+    for i in range(count):
+        wrapper = players.get(str(i), {}).get("player")
+        if not wrapper:
+            continue
+        parsed = _parse_one_player(wrapper)
+        if parsed:
+            out.append(parsed)
+    return out
+
+
+def _parse_one_player(player_entry: list[Any]) -> dict[str, Any] | None:
+    """A player entry is [meta_list, {selected_position?}, {percent_owned?}, ...]."""
+    meta: dict[str, Any] = {}
+    selected_position: str | None = None
+    percent_owned: float | None = None
+    waiver_status: str | None = None
+
+    first = player_entry[0] if player_entry else None
+    if isinstance(first, list):
+        for sub in first:
+            if not isinstance(sub, dict):
+                continue
+            if "name" in sub and isinstance(sub["name"], dict):
+                meta["full_name"] = sub["name"].get("full")
+                meta["first_name"] = sub["name"].get("first")
+                meta["last_name"] = sub["name"].get("last")
+            elif "eligible_positions" in sub:
+                positions = sub["eligible_positions"]
+                if isinstance(positions, list):
+                    meta["eligible_positions"] = [
+                        p.get("position") for p in positions if isinstance(p, dict) and "position" in p
+                    ]
+            else:
+                for k, v in sub.items():
+                    if not isinstance(v, (list, dict)):
+                        meta[k] = v
+
+    for item in player_entry[1:] if len(player_entry) > 1 else []:
+        if not isinstance(item, dict):
+            continue
+        if "selected_position" in item:
+            sp = item["selected_position"]
+            if isinstance(sp, list):
+                for s in sp:
+                    if isinstance(s, dict) and "position" in s:
+                        selected_position = s["position"]
+                        break
+        if "ownership" in item:
+            own = item["ownership"]
+            if isinstance(own, dict):
+                waiver_status = own.get("ownership_type")
+        if "percent_owned" in item:
+            po = item["percent_owned"]
+            if isinstance(po, dict):
+                try:
+                    percent_owned = float(po.get("value", 0))
+                except (TypeError, ValueError):
+                    pass
+
+    if not meta.get("player_key"):
+        return None
+
+    eligible_positions = meta.get("eligible_positions") or []
+    primary_position = meta.get("display_position") or meta.get("primary_position")
+    if not primary_position and eligible_positions:
+        primary_position = eligible_positions[0]
+
+    return {
+        "yahoo_player_key": meta["player_key"],
+        "yahoo_player_id": _safe_int(meta.get("player_id")) or 0,
+        "full_name": meta.get("full_name") or "Unknown",
+        "first_name": meta.get("first_name"),
+        "last_name": meta.get("last_name"),
+        "eligible_positions": eligible_positions,
+        "primary_position": primary_position,
+        "nba_team_abbr": meta.get("editorial_team_abbr"),
+        "status": meta.get("status") or None,
+        "image_url": meta.get("image_url"),
+        # Roster-context fields (only set on roster fetches):
+        "selected_position": selected_position,
+        # FA-context fields (only set on FA fetches):
+        "waiver_status": waiver_status,
+        "percent_owned": percent_owned,
+    }
+
+
+def _safe_int(value: Any) -> int | None:
+    if value is None or value == "":
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _parse_one_league(league_entry: list[Any]) -> dict[str, Any] | None:
