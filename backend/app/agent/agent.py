@@ -27,6 +27,7 @@ from app.agent.tools.projections import (  # noqa: E402
 )
 from app.agent.tools.roster import get_my_roster  # noqa: E402
 from app.agent.tools.team import get_team_roster  # noqa: E402
+from app.agent.tools.web_search import search_recent_news  # noqa: E402
 
 ALL_TOOLS = [
     get_my_roster,
@@ -36,6 +37,7 @@ ALL_TOOLS = [
     find_player,
     get_player_projection,
     top_projected_free_agents,
+    search_recent_news,
 ]
 
 MODEL = "anthropic:claude-sonnet-4-6"

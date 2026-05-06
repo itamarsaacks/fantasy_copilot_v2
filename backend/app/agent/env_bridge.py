@@ -30,3 +30,6 @@ if _s.langsmith_api_key:
     )
     os.environ.setdefault("LANGSMITH_PROJECT", _s.langsmith_project)
     os.environ.setdefault("LANGCHAIN_PROJECT", _s.langsmith_project)
+
+if _s.tavily_api_key:
+    os.environ.setdefault("TAVILY_API_KEY", _s.tavily_api_key)

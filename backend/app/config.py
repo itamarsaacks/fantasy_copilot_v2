@@ -38,6 +38,9 @@ class Settings(BaseSettings):
     langsmith_tracing: bool = False
     langsmith_project: str = "fantasy-copilot-v2"
 
+    # --- Tavily (Phase 7.5 — web search for news/status)
+    tavily_api_key: str = ""
+
     # --- JWT
     jwt_secret: str = "dev-only-secret-replace-in-env"
     jwt_algorithm: str = "HS256"

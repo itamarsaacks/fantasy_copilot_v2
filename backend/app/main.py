@@ -1,7 +1,16 @@
 """FastAPI entrypoint."""
 
-import logging
-from contextlib import asynccontextmanager
+# Load backend/.env BEFORE any other import — defends against shells that
+# pre-set keys to empty strings (which would otherwise win over .env via
+# pydantic-settings precedence).
+from pathlib import Path  # noqa: E402
+
+from dotenv import load_dotenv  # noqa: E402
+
+load_dotenv(Path(__file__).resolve().parent.parent / ".env", override=True)
+
+import logging  # noqa: E402
+from contextlib import asynccontextmanager  # noqa: E402
 
 # App-wide logging at INFO. uvicorn configures its own loggers; this sets the
 # `app.*` tree so freshness/sync/etc INFO lines actually surface.

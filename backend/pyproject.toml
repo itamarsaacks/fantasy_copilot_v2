@@ -32,6 +32,7 @@ dependencies = [
     "deepagents>=0.0.5",
     "langchain-anthropic>=0.3",
     "langsmith>=0.2",
+    "langchain-tavily>=0.2",
 ]
 
 [build-system]
