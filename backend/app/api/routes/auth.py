@@ -14,7 +14,7 @@ from __future__ import annotations
 import secrets
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, status
+from fastapi import APIRouter, BackgroundTasks, Cookie, Depends, HTTPException, Request, status
 from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -23,6 +23,7 @@ from app.config import get_settings
 from app.connectors import yahoo as yahoo_client
 from app.db.engine import get_session
 from app.db.models import League, User
+from app.jobs import freshness
 from app.security import COOKIE_NAME, create_access_token, get_current_user
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -51,6 +52,7 @@ async def yahoo_login() -> RedirectResponse:
 @router.get("/yahoo/callback")
 async def yahoo_callback(
     request: Request,
+    background_tasks: BackgroundTasks,
     code: str | None = None,
     state: str | None = None,
     error: str | None = None,
@@ -120,6 +122,10 @@ async def yahoo_callback(
         league_fetch_error = str(exc)
 
     await db.commit()
+
+    # Phase 7: kick off an immediate background sync so the user's data is
+    # fresh by the time they reach the app. No-op in replay mode.
+    background_tasks.add_task(freshness.trigger_initial_sync, user.id)
 
     # Set JWT cookie + return JSON for now. (Frontend redirect added in Phase 8.)
     jwt_value = create_access_token(user.id)

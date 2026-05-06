@@ -8,6 +8,7 @@ from fastapi import APIRouter, Header, HTTPException, status
 
 from app.config import get_settings
 from app.engine.projection import compute_league_projections
+from app.jobs import freshness
 from app.jobs.sync_stats import sync_league_stats
 from app.jobs.sync_yahoo import sync_league
 
@@ -66,6 +67,16 @@ async def sync_stats(
         "stat_rows_written": result.stat_rows_written,
         "errors": result.errors,
     }
+
+
+@router.post("/freshness-tick")
+async def freshness_tick(x_admin_secret: str | None = Header(default=None)):
+    """Run one freshness tick synchronously. Useful for tests + manual debug.
+
+    In replay mode this returns `{"skipped": "replay"}` without touching Yahoo.
+    """
+    _require_admin(x_admin_secret)
+    return await freshness.tick_once()
 
 
 @router.post("/compute-projections")

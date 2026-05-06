@@ -48,6 +48,12 @@ class User(Base):
 
     auth_broken: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
+    # Phase 7: stamped by middleware on every authenticated request. The
+    # freshness controller treats users seen within the last ~10 min as active.
+    last_seen_at: Mapped[datetime | None] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True, index=True
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
     )
