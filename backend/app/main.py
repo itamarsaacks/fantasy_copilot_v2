@@ -1,10 +1,12 @@
-"""FastAPI entrypoint. Phase 1: just a /health route. Real routes land in later phases."""
+"""FastAPI entrypoint."""
 
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
+from app.api.routes import auth as auth_routes
 from app.config import get_settings
 from app.db.engine import engine
 
@@ -19,6 +21,17 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Fantasy Copilot v2", lifespan=lifespan)
+
+# CORS for the future Next.js frontend (added in Phase 8). Allow localhost dev origins.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(auth_routes.router)
 
 
 @app.get("/health")

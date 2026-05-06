@@ -31,7 +31,7 @@ Next.js frontend ↔ FastAPI backend (Postgres + Alembic). A LangChain `deepagen
 
 ## Local dev
 - DB: `docker compose up -d` (Postgres 16)
-- Backend: `cd backend && uvicorn app.main:app --reload --port 8000`
+- Backend: `cd backend && uvicorn app.main:app --reload --reload-dir app --port 8000`
 - Frontend: `cd frontend && npm run dev`
 - Tunnel (Phase 2+): `ngrok http 8000` — paste URL into Yahoo dev app + `backend/.env`
 - Replay mode (off-season testing): set `APP_MODE=replay` and `AS_OF_DATE=YYYY-MM-DD` in `backend/.env`
@@ -50,17 +50,22 @@ Next.js frontend ↔ FastAPI backend (Postgres + Alembic). A LangChain `deepagen
 
 ## Yahoo API gotchas (the ones that bite)
 - Use `/players;player_keys=.../stats;type=X` — `;out=stats;type=X` silently ignores `type`.
-- `scoring_type` field drives prompt + projection model.
+- `scoring_type` field drives prompt + projection model. Raw values: `point`, `headpoint`, `head`, `roto`.
 - Refresh tokens expire after ~60 days inactivity → reconnect UX is mandatory.
+- `xoauth_yahoo_guid` is no longer reliably returned in the token response — fetch GUID via `/users;use_login=1` instead.
 - Game key for 2025–26: `466`.
 - Off-season is the default state for half the year. Always handle it.
 
 ## League types
+Yahoo's raw `scoring_type` values (verified 2026-05 against live API):
+- `point` — season-long total fantasy points
+- `headpoint` — head-to-head points (uses `stat_modifiers`)
+- `head` — head-to-head categories (uses `stat_categories`)
 - `roto` — rotisserie
-- `head2head_points` — H2H points (uses `stat_modifiers`)
-- `head2head_categories` — H2H categories (uses `stat_categories`)
 
-Detected from Yahoo `scoring_type` at OAuth time. Drives prompt + projection logic.
+Stored as-is in `leagues.scoring_type`. The agent + projection engine map these
+to behavior (prompt selection, projection model). Older docs may say
+`head2head_points` / `head2head_categories` — those are NOT what Yahoo returns.
 
 ## Where docs live
 - `docs/decisions/` — ADRs (architecture decision records)
