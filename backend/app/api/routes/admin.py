@@ -78,7 +78,8 @@ async def compute_projections(
     result = await compute_league_projections(league_id=league_id)
     return {
         "league_key": result.league_key,
-        "rows_written": result.rows_written,
+        "scoring_type": result.scoring_type,
+        "horizons_written": result.horizons_written,
         "rows_skipped_no_stats": result.rows_skipped_no_stats,
         "errors": result.errors,
     }

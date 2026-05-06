@@ -51,14 +51,17 @@ SCORING_TYPE_NOTES = {
         "categories (points, rebounds, assists, etc.) and the team that wins more "
         "categories wins the matchup. Standings track W/L. Frame advice around "
         "category balance and which categories the team is strong vs weak in. "
-        "(The category-level data is not yet in the DB; flag this when relevant.)"
+        "When using get_player_projection, the `components` field holds per-category "
+        "values — read THOSE for category-level analysis, not just projected_value. "
+        "projected_value is a rough composite for ranking only."
     ),
     "roto": (
         "This league is ROTISSERIE. Standings rank teams in each stat category "
         "across the season; final ranking is sum of per-category ranks. "
         "Frame advice around moving up in specific categories where the team is "
-        "close to a higher rotisserie point. (Per-category ranks are not yet in "
-        "the DB; flag this when relevant.)"
+        "close to a higher rotisserie point. When using get_player_projection, "
+        "the `components` field holds per-category values — read THOSE for "
+        "category-level analysis. projected_value is a composite for ranking only."
     ),
 }
 

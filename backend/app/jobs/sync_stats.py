@@ -1,7 +1,15 @@
-"""Sync per-player season stats for all players in a league (rosters + FAs).
+"""Sync per-player raw NBA stats for all players in a league (rosters + FAs).
 
-Writes into `player_stats` (append-only time-series). One run produces one
-snapshot per (player, league_key, scope, stat_id, as_of_date).
+Stats are fetched from Yahoo's GLOBAL /players endpoint (not league-scoped),
+which returns ALL stats including GP. Stored as raw NBA stats — the
+projection engine applies per-league scoring rules at compute time.
+
+We still tag rows with league_key for provenance + cleanup, but the values
+are league-independent. Different leagues sharing players will write
+duplicate rows; that's intentional + cheap, keeps the table simple.
+
+Writes into `player_stats` (append-only time-series). Idempotent for the
+same as_of_date via ON CONFLICT.
 """
 
 from __future__ import annotations
@@ -102,11 +110,13 @@ async def sync_league_stats(
             batch = keys[i : i + BATCH_SIZE]
             try:
                 stats_by_key = await yahoo.fetch_player_stats(
-                    access_token, league.league_key, batch, coverage=coverage
+                    access_token, batch, coverage=coverage
                 )
             except Exception as exc:
                 log.exception("stats batch failed")
-                result.errors.append(f"batch {i}-{i+len(batch)}: {exc}")
+                result.errors.append(
+                    f"batch {i}-{i+len(batch)}: {exc.__class__.__name__}: {exc}"
+                )
                 continue
 
             written_this_batch = 0

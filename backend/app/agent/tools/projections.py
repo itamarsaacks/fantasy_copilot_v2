@@ -23,31 +23,33 @@ from app.db.models import (
 
 
 @tool
-async def get_player_projection(name: str, config: RunnableConfig) -> dict[str, Any]:
-    """Return the league-rule-aware fantasy point value for a player.
+async def get_player_projection(
+    name: str,
+    config: RunnableConfig,
+    horizon: str = "per_game",
+) -> dict[str, Any]:
+    """Return the league-rule-aware projected value for a player.
 
     Args:
       name: player name. Case + diacritic insensitive.
+      horizon: "per_game" (default — best for trade/waiver/lineup decisions)
+               or "season_total" (best for "who scored most this season",
+               points-league standings questions).
 
     Output (when found):
       {name, nba_team, primary_position, status,
-       horizon, projected_value (float fantasy points), components (dict
-       {stat_id: contribution}), stale (bool), computed_at,
+       horizon, projected_value, components, stale, computed_at,
        ownership: {kind, team?, manager?}}
 
-    horizon meaning:
-      - "season_total" — the league-rule-weighted sum of season-to-date stats.
-        For a "point" league this IS what determines standings. For "headpoint"
-        it is the season-long total fantasy points scored.
-      Use this output for ANY player-value question: comparing two players,
-      trade evaluation, waiver decisions, "who scored more this season",
-      "who is projected to score more rest-of-season."
+    The meaning of projected_value depends on the league's scoring_type:
+      - point / headpoint: fantasy points (per game or season total).
+      - head / roto: a composite score across scored categories. Components
+        hold per-category values — read those for category analysis.
 
-    Components keys are Yahoo NBA stat_ids: 12=PTS, 15=REB, 16=AST, 17=STL,
-    18=BLK, 19=TO. Each component is the post-modifier contribution (e.g.
-    components["15"]=1003.2 means rebounds contributed 1003.2 fantasy points).
+    Components keys are Yahoo NBA stat_ids: 5=FGM, 6=FGA, 8=FTM, 9=FTA,
+    10=3PTM, 12=PTS, 15=REB, 16=AST, 17=STL, 18=BLK, 19=TO.
 
-    Returns {"error": ...} if no projection exists yet.
+    Returns {"error": ...} if no projection exists for this horizon.
     """
     user_id, league_id = get_context(config)
     needle = fold_ascii(name)
@@ -76,6 +78,7 @@ async def get_player_projection(name: str, config: RunnableConfig) -> dict[str, 
             select(ProjectionCache).where(
                 ProjectionCache.player_id == player.id,
                 ProjectionCache.league_id == league_id,
+                ProjectionCache.horizon == horizon,
             )
         )
         proj = proj_q.scalar_one_or_none()
@@ -137,19 +140,20 @@ async def top_projected_free_agents(
     config: RunnableConfig,
     position: str | None = None,
     limit: int = 10,
+    horizon: str = "per_game",
 ) -> dict[str, Any]:
-    """Return the top free agents in this league ranked by projected per-game
-    fantasy points (league-rule-aware).
+    """Return the top free agents in this league ranked by projected value.
 
     Args:
       position: optional eligibility filter (PG, SG, SF, PF, C, G, F, FC).
       limit: max rows (default 10, hard cap 50).
+      horizon: "per_game" (default) or "season_total".
 
     Output: {count, players: [{name, nba_team, primary_position, status,
                                percent_owned, projected_value}, ...]}.
 
-    Use this for waiver advice. If the agent gets {"error": "no projections"},
-    tell the user that projections need to be computed first.
+    Use this for waiver advice. The ranking is league-rule-aware (uses your
+    league's stat_modifiers or stat_categories).
     """
     user_id, league_id = get_context(config)
     limit = max(1, min(int(limit), 50))
@@ -167,7 +171,8 @@ async def top_projected_free_agents(
                 .join(
                     ProjectionCache,
                     (ProjectionCache.player_id == Player.id)
-                    & (ProjectionCache.league_id == league_id),
+                    & (ProjectionCache.league_id == league_id)
+                    & (ProjectionCache.horizon == horizon),
                 )
                 .where(FreeAgent.league_id == league_id)
                 .order_by(desc(ProjectionCache.projected_value).nullslast())

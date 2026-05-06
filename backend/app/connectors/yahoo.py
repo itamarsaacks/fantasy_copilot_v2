@@ -302,23 +302,24 @@ def _parse_roster(payload: dict[str, Any]) -> list[dict[str, Any]]:
 
 async def fetch_player_stats(
     access_token: str,
-    league_key: str,
     player_keys: list[str],
     coverage: str = "season",
 ) -> dict[str, list[dict[str, Any]]]:
-    """Fetch stats for one batch of players (max 25 player_keys per call).
+    """Fetch raw NBA stats for a batch of players (max 25 player_keys per call).
+
+    Uses the GLOBAL `/players;player_keys=...` endpoint (not league-scoped).
+    This returns ALL stats Yahoo tracks including GP (stat_id 0), GS (1),
+    not just stats your league happens to score. The engine applies league
+    rules at projection time.
 
     Args:
-      league_key: needed because we hit /league/{key}/players for league-scoped
-        stat values (which can differ from raw NBA stats by league rules).
       player_keys: up to 25 player_keys.
-      coverage: 'season' | 'lastweek' | 'lastmonth' | 'date'. (We pass 'date'
-        elsewhere with a ;date= modifier.)
+      coverage: 'season' | 'lastweek' | 'lastmonth' | 'date'.
 
     Returns: {player_key: [{stat_id, value}, ...]}.
 
-    NOTE: /players;player_keys=...;out=stats;type=X silently drops the type
-    filter — must use /stats;type=X as a path segment.
+    NOTE: /players;...;out=stats;type=X silently drops the type filter —
+    must use /stats;type=X as a path segment.
     """
     if not player_keys:
         return {}
@@ -328,7 +329,7 @@ async def fetch_player_stats(
     headers = {"Authorization": f"Bearer {access_token}", "Accept": "application/json"}
     keys_csv = ",".join(player_keys)
     url = (
-        f"{FANTASY_API_BASE}/league/{league_key}/players;player_keys={keys_csv}/"
+        f"{FANTASY_API_BASE}/players;player_keys={keys_csv}/"
         f"stats;type={coverage}?format=json"
     )
     async with httpx.AsyncClient(timeout=20) as client:
@@ -338,10 +339,13 @@ async def fetch_player_stats(
 
 
 def _parse_player_stats(payload: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
-    """Return {player_key: [{stat_id, value}, ...]}."""
+    """Return {player_key: [{stat_id, value}, ...]}.
+
+    Global endpoint shape: fantasy_content.players.{N}.player[<list>].
+    """
     out: dict[str, list[dict[str, Any]]] = {}
     try:
-        players = payload["fantasy_content"]["league"][1]["players"]
+        players = payload["fantasy_content"]["players"]
     except (KeyError, IndexError, TypeError):
         return out
     if not isinstance(players, dict):
