@@ -8,6 +8,7 @@ import { Composer } from "./composer";
 import { Message, type ChatMessage } from "./message";
 import { Sparkles } from "lucide-react";
 import { toast } from "sonner";
+import { buttonVariants } from "@/components/ui/button";
 
 const SUGGESTIONS = [
   "Where am I ranked in this league?",
@@ -85,11 +86,17 @@ export function Conversation() {
     }
   };
 
+  // Three states: not signed in (no /auth/me), signed in but no leagues (rare),
+  // signed in with leagues (the normal path).
+  const isUnauthenticated = !me.isLoading && !me.data;
+
   return (
     <div className="flex flex-col h-full">
       <div ref={scrollRef} className="flex-1 overflow-y-auto">
         <div className="max-w-2xl mx-auto px-4 md:px-8 py-8 md:py-12">
-          {messages.length === 0 ? (
+          {isUnauthenticated ? (
+            <SignInPrompt />
+          ) : messages.length === 0 ? (
             <EmptyState
               leagueName={league?.name}
               onPick={(s) => sendMessage(s)}
@@ -133,6 +140,35 @@ export function Conversation() {
             )}
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function SignInPrompt() {
+  return (
+    <div className="py-16 md:py-24 space-y-8">
+      <div className="space-y-3">
+        <div className="inline-flex items-center gap-2 text-xs uppercase tracking-widest text-primary">
+          <Sparkles className="size-3.5" />
+          Fantasy Copilot
+        </div>
+        <h1 className="font-heading text-3xl md:text-4xl leading-tight tracking-tight text-foreground">
+          Sign in with Yahoo to{" "}
+          <span className="italic text-primary">talk to your team.</span>
+        </h1>
+        <p className="text-muted-foreground text-[15px] leading-7 max-w-xl">
+          I'll pull your roster, league rules, free agents, and projections.
+          Read-only access — I never post on your behalf.
+        </p>
+      </div>
+      <div>
+        <a
+          href="/auth/yahoo/login"
+          className={buttonVariants({ size: "lg" }) + " h-11 px-5"}
+        >
+          Connect Yahoo
+        </a>
       </div>
     </div>
   );

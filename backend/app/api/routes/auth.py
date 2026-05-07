@@ -60,12 +60,12 @@ async def yahoo_callback(
     db: AsyncSession = Depends(get_session),
 ):
     if error:
-        raise HTTPException(status_code=400, detail=f"yahoo returned error: {error}")
+        return RedirectResponse(url="/login?error=oauth", status_code=302)
     if not code:
-        raise HTTPException(status_code=400, detail="missing code")
+        return RedirectResponse(url="/login?error=oauth", status_code=302)
     if not state or not fc_oauth_state or not secrets.compare_digest(state, fc_oauth_state):
         # CSRF defense: state from query must match the state cookie we set.
-        raise HTTPException(status_code=400, detail="invalid or missing state")
+        return RedirectResponse(url="/login?error=oauth", status_code=302)
 
     # Step 3: exchange code for tokens
     token_payload = await yahoo_client.exchange_code(code)
@@ -127,17 +127,20 @@ async def yahoo_callback(
     # fresh by the time they reach the app. No-op in replay mode.
     background_tasks.add_task(freshness.trigger_initial_sync, user.id)
 
-    # Set JWT cookie + return JSON for now. (Frontend redirect added in Phase 8.)
+    # Set JWT cookie + redirect the browser to /chat on the same origin.
+    # In dev with ngrok->frontend setup, this is the ngrok URL; in production
+    # it's whatever domain serves both backend and frontend.
     jwt_value = create_access_token(user.id)
-    response = JSONResponse(
-        {
-            "ok": True,
-            "user_id": user.id,
-            "yahoo_guid": user.yahoo_guid,
-            "leagues_synced": leagues_synced,
-            "league_fetch_error": league_fetch_error,
-        }
-    )
+
+    # Surface league_fetch_error via a query param so the frontend can show
+    # it. leagues_synced is informational — the user lands in /chat regardless.
+    redirect_target = "/chat"
+    if league_fetch_error:
+        # URL-encode minimally; this is dev-only diagnostic surface area.
+        from urllib.parse import urlencode
+        redirect_target = f"/chat?warn={urlencode({'msg': league_fetch_error})[4:]}"
+
+    response = RedirectResponse(url=redirect_target, status_code=302)
     settings = get_settings()
     response.set_cookie(
         key=COOKIE_NAME,

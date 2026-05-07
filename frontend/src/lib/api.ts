@@ -5,8 +5,14 @@
  * - Throws ApiError with the parsed body on non-2xx
  */
 
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+/**
+ * Empty string => relative URLs (Next.js rewrites proxy to backend on the
+ * SAME origin as the frontend). This is what we use in dev (whether through
+ * localhost:3000 or via ngrok tunnel) so cookies set by the backend land on
+ * the same domain the browser is using. Set NEXT_PUBLIC_API_URL only when
+ * you explicitly want the browser to talk to a different origin.
+ */
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "";
 
 export class ApiError extends Error {
   constructor(
