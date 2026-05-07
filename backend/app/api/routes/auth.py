@@ -167,6 +167,7 @@ async def me(
         },
         "leagues": [
             {
+                "id": lg.id,
                 "league_key": lg.league_key,
                 "name": lg.name,
                 "scoring_type": lg.scoring_type,

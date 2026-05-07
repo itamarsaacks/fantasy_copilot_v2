@@ -1,0 +1,249 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+/* ---------------------------------------------------------------------------
+   Fantasy Copilot v2 — design tokens
+   "Quiet/analytical, single warm orange accent. claude.com restraint,
+   editorial typography, paper-like surfaces."
+   --------------------------------------------------------------------------- */
+
+@theme inline {
+  /* shadcn/ui semantic mapping */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  /* Project-specific tokens (warm semantic colors) */
+  --color-paper: var(--paper);
+  --color-ink: var(--ink);
+  --color-ink-muted: var(--ink-muted);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+
+  /* Typography */
+  --font-sans: var(--font-inter);
+  --font-serif: var(--font-playfair);
+  --font-mono: var(--font-jetbrains-mono);
+  --font-heading: var(--font-playfair);
+
+  /* Radii (restrained, not pillowy) */
+  --radius-sm: 0.25rem;
+  --radius-md: 0.375rem;
+  --radius-lg: 0.5rem;
+  --radius-xl: 0.75rem;
+  --radius-2xl: 1rem;
+}
+
+:root {
+  --radius: 0.5rem;
+
+  /* Warm paper background, near-black warm text */
+  --paper: oklch(0.985 0.005 85);
+  --background: oklch(0.985 0.005 85);
+  --ink: oklch(0.18 0.005 80);
+  --foreground: oklch(0.18 0.005 80);
+  --ink-muted: oklch(0.46 0.008 85);
+  --muted-foreground: oklch(0.46 0.008 85);
+
+  /* Surfaces */
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.18 0.005 80);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.18 0.005 80);
+  --muted: oklch(0.96 0.008 85);
+  --secondary: oklch(0.96 0.008 85);
+  --secondary-foreground: oklch(0.18 0.005 80);
+
+  /* Accent = warm orange (our brand color, used for primary actions) */
+  --primary: oklch(0.66 0.16 50);
+  --primary-foreground: oklch(0.99 0.005 85);
+  --accent: oklch(0.94 0.04 65);
+  --accent-foreground: oklch(0.42 0.14 50);
+
+  /* Status colors (muted, never neon) */
+  --destructive: oklch(0.51 0.19 27);
+  --success: oklch(0.52 0.135 145);
+  --success-foreground: oklch(0.99 0.005 85);
+  --warning: oklch(0.66 0.16 65);
+  --warning-foreground: oklch(0.18 0.005 80);
+
+  /* Borders + ring */
+  --border: oklch(0.91 0.006 85);
+  --input: oklch(0.91 0.006 85);
+  --ring: oklch(0.66 0.16 50);
+
+  /* Chart colors (still tunable; paper-friendly muted hues) */
+  --chart-1: oklch(0.66 0.16 50);
+  --chart-2: oklch(0.55 0.13 220);
+  --chart-3: oklch(0.52 0.135 145);
+  --chart-4: oklch(0.51 0.19 27);
+  --chart-5: oklch(0.46 0.008 85);
+
+  /* Sidebar (slightly cooler than paper for separation) */
+  --sidebar: oklch(0.97 0.006 85);
+  --sidebar-foreground: oklch(0.18 0.005 80);
+  --sidebar-primary: oklch(0.66 0.16 50);
+  --sidebar-primary-foreground: oklch(0.99 0.005 85);
+  --sidebar-accent: oklch(0.94 0.012 85);
+  --sidebar-accent-foreground: oklch(0.18 0.005 80);
+  --sidebar-border: oklch(0.91 0.006 85);
+  --sidebar-ring: oklch(0.66 0.16 50);
+}
+
+.dark {
+  /* Dark mode is not the focus tonight; placeholder values that won't crash. */
+  --background: oklch(0.18 0.005 80);
+  --foreground: oklch(0.96 0.005 85);
+  --paper: oklch(0.18 0.005 80);
+  --ink: oklch(0.96 0.005 85);
+  --ink-muted: oklch(0.66 0.008 85);
+  --card: oklch(0.22 0.005 80);
+  --card-foreground: oklch(0.96 0.005 85);
+  --popover: oklch(0.22 0.005 80);
+  --popover-foreground: oklch(0.96 0.005 85);
+  --primary: oklch(0.7 0.16 55);
+  --primary-foreground: oklch(0.18 0.005 80);
+  --secondary: oklch(0.28 0.005 80);
+  --secondary-foreground: oklch(0.96 0.005 85);
+  --muted: oklch(0.28 0.005 80);
+  --muted-foreground: oklch(0.66 0.008 85);
+  --accent: oklch(0.32 0.04 55);
+  --accent-foreground: oklch(0.96 0.005 85);
+  --destructive: oklch(0.6 0.19 27);
+  --success: oklch(0.62 0.135 145);
+  --success-foreground: oklch(0.18 0.005 80);
+  --warning: oklch(0.7 0.16 65);
+  --warning-foreground: oklch(0.18 0.005 80);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.7 0.16 55);
+  --sidebar: oklch(0.16 0.005 80);
+  --sidebar-foreground: oklch(0.96 0.005 85);
+  --sidebar-primary: oklch(0.7 0.16 55);
+  --sidebar-primary-foreground: oklch(0.18 0.005 80);
+  --sidebar-accent: oklch(0.28 0.005 80);
+  --sidebar-accent-foreground: oklch(0.96 0.005 85);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.7 0.16 55);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    @apply font-sans;
+    font-feature-settings: "cv11", "ss01", "ss03";
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+  }
+
+  /* Editorial headings use Playfair */
+  h1, h2, h3, .font-heading {
+    font-family: var(--font-heading);
+    font-feature-settings: "kern", "liga";
+  }
+
+  /* Tabular figures everywhere a number could appear in a column */
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Markdown prose styles — used in the chat assistant messages */
+  .prose-chat {
+    @apply text-[15px] leading-7;
+  }
+  .prose-chat p {
+    @apply mb-3 last:mb-0;
+  }
+  .prose-chat strong {
+    @apply font-semibold text-foreground;
+  }
+  .prose-chat em {
+    @apply italic;
+  }
+  .prose-chat a {
+    @apply text-primary underline underline-offset-2 hover:text-[var(--accent-foreground)];
+  }
+  .prose-chat code {
+    font-family: var(--font-mono);
+    @apply bg-muted text-foreground rounded px-1.5 py-0.5 text-[13px];
+  }
+  .prose-chat pre {
+    font-family: var(--font-mono);
+    @apply bg-muted rounded-lg p-3 my-3 overflow-x-auto text-[13px];
+  }
+  .prose-chat pre code {
+    @apply bg-transparent p-0;
+  }
+  .prose-chat ul, .prose-chat ol {
+    @apply my-3 pl-6 space-y-1.5;
+  }
+  .prose-chat ul { list-style: disc; }
+  .prose-chat ol { list-style: decimal; }
+  .prose-chat blockquote {
+    @apply my-3 pl-4 border-l-2 border-border italic text-muted-foreground;
+  }
+  .prose-chat table {
+    @apply w-full my-4 border-collapse tabular-nums;
+    font-size: 14px;
+  }
+  .prose-chat thead th {
+    @apply text-left font-semibold border-b border-border pb-2 px-2 text-muted-foreground uppercase tracking-wide;
+    font-size: 11px;
+  }
+  .prose-chat tbody td {
+    @apply border-b border-border/60 py-2 px-2;
+  }
+  .prose-chat h1, .prose-chat h2, .prose-chat h3, .prose-chat h4 {
+    @apply font-semibold mt-5 mb-2;
+    font-family: var(--font-heading);
+  }
+  .prose-chat h1 { @apply text-2xl; }
+  .prose-chat h2 { @apply text-xl; }
+  .prose-chat h3 { @apply text-lg; }
+  .prose-chat hr {
+    @apply my-4 border-border;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

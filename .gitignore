@@ -53,3 +53,9 @@ tests/screenshots/diffs/
 # Build artifacts
 build/
 *.tsbuildinfo
+
+# Per-user npm cache (Phase 8)
+.npm-cache/
+
+# Claude Code internal worktrees — never commit
+.claude/worktrees/

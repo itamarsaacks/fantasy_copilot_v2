@@ -1,11 +1,23 @@
-"""Centralised configuration. Reads from backend/.env. Never hard-code secrets."""
+"""Centralised configuration. Reads from backend/.env. Never hard-code secrets.
+
+We call load_dotenv(override=True) at module import — BEFORE pydantic-settings
+constructs Settings — so that backend/.env wins over any (possibly empty)
+shell environment variables. This is critical: a parent shell with
+ANTHROPIC_API_KEY="" or JWT_SECRET="" would otherwise silently override
+the real values in .env, breaking the agent and JWT auth.
+"""
 
 from datetime import date
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 
+from dotenv import load_dotenv
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# backend/.env is two parents up from this file (backend/app/config.py).
+load_dotenv(Path(__file__).resolve().parent.parent / ".env", override=True)
 
 
 class Settings(BaseSettings):
