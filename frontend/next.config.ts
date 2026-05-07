@@ -25,7 +25,7 @@ const nextConfig: NextConfig = {
     // collide with any frontend page so they can stay flat.
     return [
       { source: "/auth/:path*", destination: `${BACKEND_URL}/auth/:path*` },
-      { source: "/api/chat", destination: `${BACKEND_URL}/chat` },
+      { source: "/api/:path*", destination: `${BACKEND_URL}/api/:path*` },
       { source: "/admin/:path*", destination: `${BACKEND_URL}/admin/:path*` },
       { source: "/health", destination: `${BACKEND_URL}/health` },
     ];

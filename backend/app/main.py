@@ -27,9 +27,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text, update
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from app.agent import checkpointer as agent_checkpointer
 from app.api.routes import admin as admin_routes
 from app.api.routes import auth as auth_routes
 from app.api.routes import chat as chat_routes
+from app.api.routes import conversations as conversation_routes
 from app.config import get_settings
 from app.db.engine import SessionLocal, engine
 from app.db.models import User
@@ -44,11 +46,15 @@ async def lifespan(app: FastAPI):
     # Verify DB reachable at startup. Fail fast if it isn't.
     async with engine.connect() as conn:
         await conn.execute(text("SELECT 1"))
+    # LangGraph checkpointer (conversation memory). Must be started inside the
+    # event loop, before any agent invocation — but tests sometimes skip it.
+    await agent_checkpointer.start()
     freshness.start()
     try:
         yield
     finally:
         await freshness.stop()
+        await agent_checkpointer.stop()
         await engine.dispose()
 
 
@@ -114,6 +120,7 @@ app.add_middleware(
 app.include_router(auth_routes.router)
 app.include_router(admin_routes.router)
 app.include_router(chat_routes.router)
+app.include_router(conversation_routes.router)
 
 
 @app.get("/health")

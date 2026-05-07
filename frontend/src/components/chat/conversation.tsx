@@ -1,9 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useActiveLeague } from "@/lib/hooks/use-active-league";
 import { useMe } from "@/lib/hooks/use-me";
 import { useChat } from "@/lib/hooks/use-chat";
+import { useChatThread } from "@/lib/hooks/use-chat-thread";
+import { api } from "@/lib/api";
+import type { ConversationDetail } from "@/lib/hooks/use-conversations";
 import { Composer } from "./composer";
 import { Message, type ChatMessage } from "./message";
 import { Sparkles } from "lucide-react";
@@ -25,6 +29,7 @@ export function Conversation() {
   const me = useMe();
   const { league, leagueId } = useActiveLeague();
   const chat = useChat();
+  const { activeThreadId, setActiveThreadId, newChatRequestId } = useChatThread();
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState("");
@@ -37,15 +42,61 @@ export function Conversation() {
     el.scrollTop = el.scrollHeight;
   }, [messages]);
 
-  // Wipe conversation when the user switches leagues — context changes entirely.
+  // Wipe conversation + thread when the league changes — different DB context.
   const leagueKey = league?.league_key ?? null;
   const lastLeagueKey = useRef<string | null>(null);
   useEffect(() => {
     if (lastLeagueKey.current && lastLeagueKey.current !== leagueKey) {
       setMessages([]);
+      setActiveThreadId(null);
     }
     lastLeagueKey.current = leagueKey;
-  }, [leagueKey]);
+  }, [leagueKey, setActiveThreadId]);
+
+  // "New chat" button (in sidebar) bumps newChatRequestId — clear here.
+  const lastNewChatId = useRef<number>(newChatRequestId);
+  useEffect(() => {
+    if (lastNewChatId.current !== newChatRequestId) {
+      setMessages([]);
+      lastNewChatId.current = newChatRequestId;
+    }
+  }, [newChatRequestId]);
+
+  // When the user clicks an existing conversation in the sidebar, fetch its
+  // history and load it into the message list.
+  const conversationDetailQuery = useQuery<ConversationDetail | null>({
+    queryKey: ["conversation-by-thread", activeThreadId],
+    enabled: !!activeThreadId,
+    queryFn: async () => {
+      // We have thread_id but need the numeric id for the detail endpoint.
+      // List + match. Fine since the list is already cached.
+      const list = await api<{ id: number; thread_id: string }[]>(
+        `/api/conversations?league_id=${leagueId}`
+      );
+      const match = list.find((c) => c.thread_id === activeThreadId);
+      if (!match) return null;
+      return api<ConversationDetail>(`/api/conversations/${match.id}`);
+    },
+    staleTime: 0,
+  });
+
+  // Hydrate messages from server when a thread is opened.
+  const lastHydratedThread = useRef<string | null>(null);
+  useEffect(() => {
+    if (!activeThreadId) return;
+    if (lastHydratedThread.current === activeThreadId) return;
+    if (!conversationDetailQuery.data) return;
+    const hydrated: ChatMessage[] = conversationDetailQuery.data.messages
+      .filter((m) => m.role === "user" || m.role === "assistant")
+      .filter((m) => m.content && m.content.trim().length > 0)
+      .map((m) => ({
+        id: newId(),
+        role: m.role as "user" | "assistant",
+        content: m.content,
+      }));
+    setMessages(hydrated);
+    lastHydratedThread.current = activeThreadId;
+  }, [activeThreadId, conversationDetailQuery.data]);
 
   const sendMessage = async (text: string) => {
     if (!text.trim() || !me.data?.user || !league || !leagueId) return;
@@ -65,7 +116,16 @@ export function Conversation() {
     setDraft("");
 
     try {
-      const res = await chat.mutateAsync({ message: text, league_id: leagueId });
+      const res = await chat.mutateAsync({
+        message: text,
+        league_id: leagueId,
+        thread_id: activeThreadId ?? undefined,
+      });
+      // Adopt the thread_id the server tells us (new conversations need this).
+      if (res.thread_id !== activeThreadId) {
+        setActiveThreadId(res.thread_id);
+        lastHydratedThread.current = res.thread_id;
+      }
       setMessages((m) =>
         m.map((msg) =>
           msg.id === pendingMsg.id

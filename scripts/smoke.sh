@@ -59,7 +59,8 @@ required = [
     "/auth/yahoo/callback",
     "/auth/me",
     "/auth/logout",
-    "/chat",
+    "/api/chat",
+    "/api/conversations",
     "/admin/sync-now",
     "/admin/sync-stats",
     "/admin/compute-projections",
@@ -93,7 +94,7 @@ green "  ok"
 blue "[5/5] chat agent end-to-end (may take 30-90s)"
 HTTP_CODE=$(
   curl -s -o /tmp/smoke_chat.json -w "%{http_code}" \
-    -X POST "$API/chat" \
+    -X POST "$API/api/chat" \
     -H "Content-Type: application/json" \
     -H "Cookie: fc_session=$JWT" \
     -d '{"message":"Tell me my team name in one sentence.","league_id":1}' \

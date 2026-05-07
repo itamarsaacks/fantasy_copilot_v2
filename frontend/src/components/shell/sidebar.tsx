@@ -11,6 +11,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { RecentChats } from "@/components/shell/recent-chats";
 
 const NAV_ITEMS = [
   { href: "/chat", label: "Chat", icon: MessageCircle },
@@ -41,7 +42,7 @@ export function Sidebar() {
         </div>
       </div>
 
-      <nav className="px-2 flex-1">
+      <nav className="px-2">
         <ul className="space-y-0.5">
           {NAV_ITEMS.map((item) => {
             const active =
@@ -70,7 +71,11 @@ export function Sidebar() {
         </ul>
       </nav>
 
-      <div className="px-5 py-4 border-t border-sidebar-border">
+      {/* Recent chats — only visible while on /chat to keep other tabs
+          uncluttered. Easy to lift later. */}
+      {pathname?.startsWith("/chat") && <RecentChats />}
+
+      <div className="px-5 py-3 border-t border-sidebar-border mt-auto">
         <div className="text-[10px] uppercase tracking-widest text-muted-foreground">
           Local · Replay
         </div>
