@@ -19,7 +19,7 @@ Next.js frontend ↔ FastAPI backend (Postgres + Alembic). A LangChain `deepagen
 
 ## Working rules (every session)
 - The SessionStart hook runs `git status`, `git log --oneline -10`, `git diff --stat`. Read the output before doing anything.
-- Read this file (`CLAUDE.md`) and the user's `MEMORY.md` at session start.
+- Read this file (`CLAUDE.md`), the user's `MEMORY.md`, AND `SESSION_NOTES.md` at session start. Skim the last 3 entries — that's where you find what was in flight.
 - One change at a time. Found a second issue? Propose a separate task.
 - Never commit without showing me the diff first.
 - Never push to main without explicit confirmation.
@@ -30,6 +30,28 @@ Next.js frontend ↔ FastAPI backend (Postgres + Alembic). A LangChain `deepagen
 - Propose new skills, never auto-create them.
 - **Before any commit:** run `bash scripts/smoke.sh` and show the output. If it doesn't pass, the work isn't done. See `.claude/skills/before-commit/SKILL.md` for the full ritual.
 - **Verification standard:** "did I prove it works end-to-end, against real data, on the actual running stack?" — not "did the function I changed return the right value in isolation."
+
+## How we work (read carefully — these patterns matter)
+This section exists because new sessions tend to feel worse than long-running ones. The user wants every session to feel the same. Follow these patterns deliberately.
+
+- **Plan in numbered sub-steps before non-trivial work.** Tell the user the plan, then narrate each sub-step as you do it. Do NOT charge through silently.
+- **Show real command output, not assertions.** "Smoke test passed" without the actual output is not enough. Paste the lines.
+- **If something looks off, STOP and ask.** Don't guess your way through. The cost of a clarifying question is tiny; the cost of a wrong assumption that compounds is large.
+- **Each phase ends in a committable working state.** No half-finished phases. If you can't ship X tonight, scope down to a smaller X that ships clean.
+- **For UI changes, verify visually.** Use Playwright via the MCP — navigate, screenshot, look at it. "It compiles" is not verification.
+- **For backend changes that touch the agent or DB, show real responses.** Hit `/api/chat` with curl, paste the actual reply. Query Postgres, show row counts before + after.
+- **The user is not a programmer.** Explain *why* before *what* on big decisions. Use plain English. Avoid acronym soup. When you must use a term, define it inline.
+- **Be honest about tradeoffs.** Yes-manship is worse than disagreement. If a request is ambitious for the time available, say so and propose a smaller version. If a path you're about to take has a downside, surface it before committing.
+- **One change per commit.** Bundling unrelated changes into one commit makes future sessions confused about what was intentional.
+- **End each working session with `/wrap-session`.** It updates SESSION_NOTES.md so the next session can pick up cleanly. (See `.claude/skills/wrap-session/SKILL.md`.)
+
+## User context (durable facts about the person you're working with)
+- **Not a programmer.** Has product instincts, not engineering ones. Prefers explanations of *why* over *what*. Code is yours to write; UX trade-offs are joint.
+- **Hates being surprised.** If you're about to do anything destructive, ask first. If you find a problem, name it before fixing it. Don't silently rewrite their decisions.
+- **Wants narration, not silence.** Long stretches of tool calls without text feel like Claude went away. Short status lines between major steps are a feature, not noise.
+- **Reads screenshots.** When testing UI, take screenshots and reference them. Don't just say "it looks good."
+- **Trusts you to push back on bad ideas.** If they propose something that conflicts with a hard rule (e.g. "let the LLM estimate this stat"), say no and explain why.
+- **Long working sessions, real product ambition.** This is going to ship. Treat it like a real product, not a toy.
 
 ## Local dev
 - DB: `docker compose up -d` (Postgres 16)
