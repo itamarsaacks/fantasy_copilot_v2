@@ -9,34 +9,37 @@ the durable record of what shipped; this file is the human-readable
 
 ---
 
-## 2026-05-09 — Continuity scaffolding (this entry was written manually, not via /wrap-session)
+## 2026-05-09 — Phase 8 frontend complete + memory + continuity scaffolding
 
 **Done this session:**
-- Phase 8.6 shipped: LangGraph PostgresSaver memory, conversations table, recent-chats sidebar, 4 new analyst tools (top_players_overall, top_by_stat, compare_players, team_strength), prompt nudges. Commit `2877235`.
-- User flagged that new sessions feel degraded. Built continuity scaffolding: this file, `/start-session` skill, `/wrap-session` skill, "How we work" + "User context" sections in CLAUDE.md.
+- `0800631` Phase 8 part 1 — Next.js scaffold, Tailwind v4 + shadcn/ui, sidebar shell, chat tab with Playfair/Inter/JetBrains Mono, working chat against the agent
+- `352a1f2` Phase 8.1 — real Yahoo OAuth from the frontend (ngrok tunnels port 3000 not 8000, Next.js proxies `/auth/*` `/api/*` `/admin/*` `/health` to backend), `/login` page, Base UI bug fixes (nested buttons, asChild, dropdown group), `/api/chat` rename to dodge frontend page collision
+- `2877235` Phase 8.6 — LangGraph PostgresSaver memory, conversations table, 4 new analyst tools (top_players_overall, top_by_stat, compare_players, team_strength), recent-chats sidebar, "+" new-chat button, prompt nudges
+- `07f0126` Continuity scaffolding — SESSION_NOTES.md, /start-session and /wrap-session skills, "How we work" + "User context" sections in CLAUDE.md
 
 **Next session should consider:**
-- Real testing of the chat by the user — they want to break it and send a list of failures.
-- Phase 9 roadmap (still tentative): NBA per-game logs sync, ownership timeline (Yahoo transactions), trade analyzer/suggester, news ingestion sub-agent. Pick ONE of these as the first Phase 9 item; don't tackle them as a bundle.
+- The user wants to break the chat in real conversations and send a list of failures. Treat that list as the spec for the next round of agent improvements.
+- Phase 9 candidates (pick ONE — don't bundle): NBA per-game logs sync (unlocks date-range queries + recent-form trends), Yahoo transactions sync (unlocks ownership timeline + "while I owned him" stats), trade analyzer/suggester (needs projections + roster simulation; partly built), background news ingestion sub-agent.
+- Frontend Phase 8 part 2/3: Team page with roster grid, Players search, League standings, Trades, Waivers. Currently they're placeholder pages.
 
 **In flight / uncommitted:**
-- The continuity scaffolding itself (this file + skills + CLAUDE.md additions). Will commit at the end of this session.
+- Nothing. Tree is clean, all four commits pushed to main.
 
 **Env state:**
-- Postgres up (Docker container `fantasy_copilot_v2_db` healthy)
-- uvicorn running on :8000 with `--reload --reload-dir app`
-- Frontend dev server running on :3000
-- ngrok tunnel: `https://sensually-april-unclad.ngrok-free.dev` → `:3000`
-- Yahoo dev app redirect URI: matches the ngrok URL
-- All 4 keys in `backend/.env`: Yahoo client+secret, Anthropic, LangSmith, Tavily, JWT secret
+- Postgres: stopped (Docker Desktop quit by user)
+- Backend uvicorn: stopped
+- Frontend: still running on :3000 (PID 38975) — harmless, will idle
+- ngrok: stopped
+- Yahoo dev app redirect URI: still `https://sensually-april-unclad.ngrok-free.dev/auth/yahoo/callback` — when user restarts ngrok, it'll likely give a different URL on the free tier and they'll need to update Yahoo + `backend/.env`
 
 **Open questions / parked decisions:**
-- Whether to migrate from ngrok free (rotating URL) to Cloudflare Tunnel (free, fixed URL) before public launch.
-- Sub-agent split (waiver_analyst, trade_evaluator) — deferred until tools per analyst clearly cluster.
-- Eval suite — discussed but not built. Worth building once we have ~3 user-reported failures to encode as regression tests.
+- Whether new sessions actually feel better with the continuity scaffolding — pending the user testing it tomorrow.
+- Whether to migrate ngrok free → Cloudflare Tunnel (free + fixed URL) before pushing more frontend work that requires repeated OAuth.
+- Sub-agent split (waiver_analyst, trade_evaluator) — deferred until the main agent's tool list clearly clusters by domain.
+- Eval suite for the agent — discussed conceptually, not built. Worth building once we have ~3 user-reported failures to encode as regression tests.
 
 **User mood at session end:**
-- Wanted to fix new-session degradation before continuing Phase 9. Tired of repeating context. Asked for the continuity tools and confirmed scope.
+- Asked for the continuity tools because new sessions had been frustrating. Tone was "fix this before we keep going." Wants to test fresh-session behavior tomorrow morning. Ready to stop tonight.
 
 ---
 
