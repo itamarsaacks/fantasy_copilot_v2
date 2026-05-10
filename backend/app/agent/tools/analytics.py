@@ -426,12 +426,22 @@ async def get_team_strength(
       team_name_or_manager: team name OR manager nickname (case + diacritic
         insensitive). Returns ambiguous list if multiple match.
 
-    Output:
-      {team_name, manager, rank,
-       stats: [{stat_name, total, league_avg, percentile_rank, ranking}, ...]}
+    Output (CATEGORY leagues — head, roto):
+      {team_name, manager, rank, scoring_type,
+       stats: [{stat_name, total, league_avg, percentile_rank, ranking,
+                lower_is_better}, ...]}
 
-    `percentile_rank` is 0-100 within this league; `ranking` is the team's
-    rank (1 = best) for that stat.
+    Output (POINTS leagues — point, headpoint):
+      {team_name, manager, rank, scoring_type,
+       total_fantasy_points, league_avg_fantasy_points, fps_ranking,
+       stats: [{stat_name, raw_total, fantasy_points_contribution,
+                pct_of_team_fps}, ...]}
+
+      In points leagues, percentile ranks per stat are NOT meaningful for
+      strategy — only total fantasy points matter. The output instead shows
+      where the team's fantasy points come from (the contribution of each
+      stat to the total). Use this descriptively, not strategically. The
+      strategic number is `total_fantasy_points` and `fps_ranking`.
     """
     user_id, league_id = get_context(config)
     needle = fold_ascii(team_name_or_manager)
@@ -528,7 +538,104 @@ async def get_team_strength(
                     t_totals[sid] = t_totals.get(sid, 0.0) + val
             team_totals[tid] = t_totals
 
-        # For each stat, rank teams
+        scoring_type = league.scoring_type
+        is_points_league = scoring_type in ("point", "headpoint")
+
+        # In points leagues, derive each team's TOTAL fantasy points using
+        # league.settings_json's stat_modifiers. This is the only thing that
+        # matters for standings.
+        if is_points_league:
+            modifiers = _extract_stat_modifiers(league.settings_json)
+
+            # ACTUAL standings — use teams.points_for + teams.rank for the
+            # truth of "where is this team in the league". These reflect what
+            # actually happened over the season (right roster at right time,
+            # starter vs bench, etc.).
+            actual_points_for_by_team = {
+                t.id: float(t.points_for) if t.points_for is not None else 0.0
+                for t in teams
+            }
+            actual_target_points = actual_points_for_by_team.get(target_team.id, 0.0)
+            n = len(teams)
+            league_avg_actual = (
+                sum(actual_points_for_by_team.values()) / n if n else 0.0
+            )
+
+            # HYPOTHETICAL — apply scoring rules to the CURRENT roster's
+            # season-total stats. Useful for "if this exact roster had been
+            # together all season, how much would they have scored?" but
+            # NOT the same as standings.
+            def hypothetical_fps_for(t_totals: dict[str, float]) -> float:
+                total = 0.0
+                for sid, val in t_totals.items():
+                    mod = modifiers.get(sid)
+                    if mod is None:
+                        continue
+                    total += val * mod
+                return total
+
+            hyp_fps = {tid: hypothetical_fps_for(t) for tid, t in team_totals.items()}
+            target_hyp_fps = hyp_fps.get(target_team.id, 0.0)
+
+            # Per-stat fantasy point contribution from the current roster
+            target_t_totals = team_totals.get(target_team.id, {})
+            stats_out: list[dict[str, Any]] = []
+            for sid in countable_ids:
+                raw_total = target_t_totals.get(sid, 0.0)
+                if raw_total == 0:
+                    continue
+                modifier = modifiers.get(sid, 0.0)
+                contribution = raw_total * modifier
+                if contribution == 0:
+                    continue
+                pretty = next(
+                    (name for _, (i, name) in STAT_ID_BY_ALIAS.items() if i == sid),
+                    f"stat_{sid}",
+                )
+                stats_out.append(
+                    {
+                        "stat_name": pretty,
+                        "raw_total": round(raw_total, 2),
+                        "fantasy_points_contribution": round(contribution, 2),
+                        "pct_of_team_fps": round(
+                            100 * contribution / target_hyp_fps, 1
+                        )
+                        if target_hyp_fps
+                        else 0.0,
+                    }
+                )
+            stats_out.sort(
+                key=lambda s: abs(s["fantasy_points_contribution"]), reverse=True
+            )
+
+            return {
+                "team_name": target_team.name,
+                "manager": target_team.manager_name,
+                "is_user_team": target_team.is_user_team,
+                "scoring_type": scoring_type,
+                # ACTUAL standings — use these for "where am I ranked"
+                "actual_total_fantasy_points": round(actual_target_points, 2),
+                "actual_rank": target_team.rank,
+                "actual_league_avg_fantasy_points": round(league_avg_actual, 2),
+                "n_teams": n,
+                # HYPOTHETICAL — current roster x season stats
+                "hypothetical_current_roster_fps": round(target_hyp_fps, 2),
+                # Stat breakdown from current roster (descriptive)
+                "stats": stats_out,
+                "note": (
+                    "POINTS LEAGUE — actual_rank and actual_total_fantasy_points "
+                    "are the truth of where this team stands (driven by who was on "
+                    "the roster all season, starter/bench decisions, etc.). "
+                    "hypothetical_current_roster_fps is what THIS exact current "
+                    "roster would have scored if they'd been together all year — "
+                    "useful for assessing current roster strength but NOT the same "
+                    "as standings. The per-stat breakdown comes from the current "
+                    "roster, so it's descriptive of who this team has NOW, not "
+                    "what they actually scored."
+                ),
+            }
+
+        # CATEGORY leagues (head, roto): per-stat percentile ranks ARE strategic.
         stats_out: list[dict[str, Any]] = []
         for sid in countable_ids:
             values_by_team = {
@@ -571,5 +678,32 @@ async def get_team_strength(
             "manager": target_team.manager_name,
             "rank": target_team.rank,
             "is_user_team": target_team.is_user_team,
+            "scoring_type": scoring_type,
             "stats": stats_out,
         }
+
+
+def _extract_stat_modifiers(settings_json) -> dict[str, float]:
+    """Local copy of the projection-engine helper, kept here to avoid
+    importing from the engine into a tool module."""
+    out: dict[str, float] = {}
+    if not isinstance(settings_json, dict):
+        return out
+    sm = settings_json.get("stat_modifiers") or {}
+    stats = sm.get("stats") if isinstance(sm, dict) else None
+    if not isinstance(stats, list):
+        return out
+    for wrapper in stats:
+        if not isinstance(wrapper, dict):
+            continue
+        s = wrapper.get("stat")
+        if not isinstance(s, dict):
+            continue
+        stat_id = str(s.get("stat_id")) if s.get("stat_id") is not None else None
+        try:
+            value = float(s.get("value")) if s.get("value") not in (None, "") else None
+        except (TypeError, ValueError):
+            value = None
+        if stat_id and value is not None:
+            out[stat_id] = value
+    return out

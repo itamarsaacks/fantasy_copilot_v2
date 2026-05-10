@@ -29,6 +29,7 @@ from app.agent.tools.analytics import (  # noqa: E402
 )
 from app.agent.tools.free_agents import get_free_agents  # noqa: E402
 from app.agent.tools.league import get_league_summary  # noqa: E402
+from app.agent.tools.league_rules import get_league_rules  # noqa: E402
 from app.agent.tools.player import find_player  # noqa: E402
 from app.agent.tools.projections import (  # noqa: E402
     get_player_projection,
@@ -41,6 +42,7 @@ from app.agent.tools.web_search import search_recent_news  # noqa: E402
 ALL_TOOLS = [
     get_my_roster,
     get_league_summary,
+    get_league_rules,
     get_team_roster,
     get_free_agents,
     find_player,
