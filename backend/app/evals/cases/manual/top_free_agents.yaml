@@ -1,0 +1,53 @@
+id: top_free_agents
+description: |
+  User asks for the best available free agents. Agent should call either
+  top_projected_free_agents (preferred — projection-aware) or get_free_agents
+  (basic ownership-ranked). Process-only — the actual recommendations vary
+  per league.
+
+mode: live
+
+intent:
+  question_type: recommendation
+  complexity: moderate
+  domain: waivers
+  answer_shape: list
+
+phrasings:
+  - "who are the best free agents available"
+  - "show me top free agents"
+  - "best players I could pick up"
+  - "which free agents should I look at"
+
+expected:
+  # Either tool is acceptable — we don't enforce both. The runner's
+  # must_call_tools requires EVERY listed tool, so we use response vocab
+  # to validate the agent answered with FA-style content.
+  # (We could split into two cases if we wanted to enforce one or the other.)
+  must_not_call_tools:
+    - get_team_roster
+    - search_recent_news
+  response_contains_any:
+    - "free agent"
+    - "available"
+    - "owned"
+    - "pick up"
+    - "waiver"
+  response_contains_none:
+    - "I don't have"
+    - "I cannot determine"
+    - "Dolphins"
+    - "Cowboys"
+    - "Yankees"
+  max_tool_calls: 4
+  max_latency_ms: 25000
+  min_response_chars: 80
+
+tags:
+  - waivers
+  - free_agents
+  - core_smoke
+
+provenance:
+  source: manual
+  source_chat_date: "2026-05-12"

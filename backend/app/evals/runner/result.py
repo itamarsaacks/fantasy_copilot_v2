@@ -12,9 +12,27 @@ they live in-memory only (printed to console). Phase E2 maps them onto the
 from __future__ import annotations
 
 import datetime as dt
+from enum import Enum
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
+
+from app.evals.schema import Severity
+
+
+class Verdict(str, Enum):
+    """The runner's verdict on one PhrasingRun.
+
+    See docs/EVAL_HARNESS.md §6 and schema.Severity for the rationale.
+      - PASS: every assertion (critical + warning) passed
+      - SOFT_PASS: all critical passed, at least one warning failed
+      - FAIL: at least one critical failed
+    Plus the orthogonal `errored` flag for crashes that prevent verdicting.
+    """
+
+    PASS = "pass"
+    SOFT_PASS = "soft_pass"
+    FAIL = "fail"
 
 
 class ToolCallTrace(BaseModel):
@@ -33,6 +51,7 @@ class AssertionFailure(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     assertion: str          # e.g. "must_call_tools"
+    severity: Severity      # critical or warning — drives the verdict
     expected: Any            # what the case said should happen
     actual: Any              # what we saw
     detail: str = ""        # human-readable explanation
@@ -47,7 +66,8 @@ class PhrasingRun(BaseModel):
     phrasing: str
     repeat_index: int       # 0-based; useful when repeat > 1
 
-    passed: bool
+    # Verdict is computed from failures + their severities. See compute_verdict().
+    verdict: Verdict = Verdict.PASS
     errored: bool = False
     error_message: str = ""
 
@@ -61,6 +81,23 @@ class PhrasingRun(BaseModel):
     langsmith_trace_id: str | None = None
     langsmith_trace_url: str | None = None
     agent_thread_id: str | None = None
+
+    @property
+    def critical_failures(self) -> list[AssertionFailure]:
+        return [f for f in self.failures if f.severity == Severity.CRITICAL]
+
+    @property
+    def warning_failures(self) -> list[AssertionFailure]:
+        return [f for f in self.failures if f.severity == Severity.WARNING]
+
+
+def compute_verdict(failures: list[AssertionFailure]) -> Verdict:
+    """Map a list of failures to a verdict using severity tiers."""
+    if any(f.severity == Severity.CRITICAL for f in failures):
+        return Verdict.FAIL
+    if any(f.severity == Severity.WARNING for f in failures):
+        return Verdict.SOFT_PASS
+    return Verdict.PASS
 
 
 class CaseResult(BaseModel):
@@ -76,11 +113,26 @@ class CaseResult(BaseModel):
 
     @property
     def passed(self) -> int:
-        return sum(1 for r in self.runs if r.passed and not r.errored)
+        """PASS + SOFT_PASS — both ship without blocking regression-tracking."""
+        return sum(
+            1 for r in self.runs
+            if not r.errored and r.verdict in (Verdict.PASS, Verdict.SOFT_PASS)
+        )
+
+    @property
+    def strict_passed(self) -> int:
+        """Only PASS (no warning failures)."""
+        return sum(1 for r in self.runs if not r.errored and r.verdict == Verdict.PASS)
+
+    @property
+    def soft_passed(self) -> int:
+        """SOFT_PASS — passing on critical assertions, drifting on warnings."""
+        return sum(1 for r in self.runs if not r.errored and r.verdict == Verdict.SOFT_PASS)
 
     @property
     def failed(self) -> int:
-        return sum(1 for r in self.runs if not r.passed and not r.errored)
+        """FAIL — at least one critical assertion failed. Blocks merges."""
+        return sum(1 for r in self.runs if not r.errored and r.verdict == Verdict.FAIL)
 
     @property
     def errored(self) -> int:
@@ -92,7 +144,8 @@ class CaseResult(BaseModel):
 
     @property
     def all_passed(self) -> bool:
-        return self.passed == self.total and self.total > 0
+        """True when zero failures and zero errors (soft passes still count)."""
+        return self.failed == 0 and self.errored == 0 and self.total > 0
 
 
 class RunSummary(BaseModel):
@@ -110,7 +163,16 @@ class RunSummary(BaseModel):
 
     @property
     def passed(self) -> int:
+        """PASS + SOFT_PASS."""
         return sum(r.passed for r in self.results)
+
+    @property
+    def strict_passed(self) -> int:
+        return sum(r.strict_passed for r in self.results)
+
+    @property
+    def soft_passed(self) -> int:
+        return sum(r.soft_passed for r in self.results)
 
     @property
     def failed(self) -> int:

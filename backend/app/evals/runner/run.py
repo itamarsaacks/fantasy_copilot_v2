@@ -19,7 +19,13 @@ from pathlib import Path
 
 from app.evals.loader import discover_cases
 from app.evals.runner.assertions import check_all
-from app.evals.runner.result import CaseResult, PhrasingRun, RunSummary
+from app.evals.runner.result import (
+    CaseResult,
+    PhrasingRun,
+    RunSummary,
+    Verdict,
+    compute_verdict,
+)
 from app.evals.schema import EvalCase, Mode
 
 CASES_ROOT = Path(__file__).resolve().parent.parent / "cases"
@@ -74,10 +80,6 @@ async def discover_test_user_league() -> tuple[int, int, str]:
     return row[0], row[1], row[2]
 
 
-def _format_failure(f) -> str:
-    return f"      - {f.assertion}: {f.detail}"
-
-
 async def run_case(
     case: EvalCase,
     user_id: int,
@@ -115,44 +117,68 @@ async def run_case(
                     tool_calls=pr.tool_calls,
                     final_response=pr.final_response,
                     latency_ms=pr.latency_ms,
+                    severity_overrides=case.severity_overrides,
                 )
                 pr.failures = failures
-                pr.passed = len(failures) == 0
+                pr.verdict = compute_verdict(failures)
 
             tool_summary = ",".join(tc.name for tc in pr.tool_calls) or "(none)"
             if pr.errored:
                 icon = "💥"
                 detail = f"ERROR: {pr.error_message}"
-            elif pr.passed:
-                icon = "✅"
+            elif pr.verdict == Verdict.PASS:
+                icon = "🟢"
                 detail = f"{pr.latency_ms}ms · tools=[{tool_summary}]"
-            else:
-                icon = "❌"
-                detail = f"{pr.latency_ms}ms · tools=[{tool_summary}] · {len(pr.failures)} failure(s)"
+            elif pr.verdict == Verdict.SOFT_PASS:
+                icon = "🟡"
+                detail = (
+                    f"{pr.latency_ms}ms · tools=[{tool_summary}] · "
+                    f"{len(pr.warning_failures)} warning(s)"
+                )
+            else:  # FAIL
+                icon = "🔴"
+                detail = (
+                    f"{pr.latency_ms}ms · tools=[{tool_summary}] · "
+                    f"{len(pr.critical_failures)} critical, "
+                    f"{len(pr.warning_failures)} warning"
+                )
             preview = f' · "{phrasing[:60]}"' if len(messages) > 1 else ""
             print(f"    {icon} {detail}{preview}")
-            if not pr.passed and not pr.errored:
+            if pr.failures:
                 for f in pr.failures:
-                    print(_format_failure(f))
+                    sev_label = "CRIT" if f.severity.value == "critical" else "warn"
+                    print(f"      - [{sev_label}] {f.assertion}: {f.detail}")
 
             cr.runs.append(pr)
     return cr
 
 
 def print_summary(summary: RunSummary) -> None:
-    pct = (summary.passed / summary.total_phrasings * 100) if summary.total_phrasings else 0.0
-    duration = (summary.finished_at - summary.started_at).total_seconds() if summary.finished_at else 0
-    print("\n" + "=" * 70)
-    print(
-        f"  {summary.passed} / {summary.total_phrasings} phrasings passed "
-        f"({pct:.0f}%)   ·   {summary.failed} failed   ·   {summary.errored} errored"
+    total = summary.total_phrasings
+    pct = (summary.passed / total * 100) if total else 0.0
+    duration = (
+        (summary.finished_at - summary.started_at).total_seconds()
+        if summary.finished_at else 0
     )
-    print(f"  {len(summary.results)} case(s) · {duration:.1f}s wall time")
+    print("\n" + "=" * 70)
+    print(f"  Verdict breakdown across {total} phrasing run(s):")
+    print(f"    🟢 PASS       {summary.strict_passed}")
+    print(f"    🟡 SOFT_PASS  {summary.soft_passed}  (critical-clean, warning drift)")
+    print(f"    🔴 FAIL       {summary.failed}")
+    print(f"    💥 ERROR      {summary.errored}")
+    print(
+        f"\n  Overall: {summary.passed}/{total} pass ({pct:.0f}%) "
+        f"· {summary.failed} fail · {summary.errored} error · "
+        f"{duration:.1f}s wall time"
+    )
     if summary.failed or summary.errored:
-        print("\n  Cases with failures:")
+        print("\n  Cases that need attention:")
         for cr in summary.results:
-            if not cr.all_passed:
-                print(f"    - {cr.case_id} ({cr.passed}/{cr.total} pass)")
+            if cr.failed or cr.errored:
+                print(
+                    f"    - {cr.case_id}: {cr.strict_passed} pass · "
+                    f"{cr.soft_passed} soft · {cr.failed} fail · {cr.errored} err"
+                )
     print("=" * 70)
 
 

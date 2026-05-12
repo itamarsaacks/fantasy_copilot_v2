@@ -41,6 +41,56 @@ CONTENT_EQUALITY_FIELDS = ("response_contains_all", "response_matches_regex")
 
 
 # ---------------------------------------------------------------------------
+# Severity tiers (introduced 2026-05-12)
+# ---------------------------------------------------------------------------
+
+
+class Severity(str, Enum):
+    """How seriously to treat an assertion failure.
+
+    See docs/EVAL_HARNESS.md §6 for the verdict logic. Short version:
+      - All criticals pass + all warnings pass → 🟢 PASS
+      - All criticals pass, some warnings fail → 🟡 SOFT_PASS
+                  (counts as pass for regression-tracking;
+                   surfaced in weekly digest as drift)
+      - Any critical fails → 🔴 FAIL
+    """
+
+    CRITICAL = "critical"
+    WARNING = "warning"
+
+
+# Default severity per assertion type. Override per-case via
+# EvalCase.severity_overrides when the default doesn't fit.
+ASSERTION_SEVERITY_DEFAULTS: dict[str, Severity] = {
+    # --- Behavioral correctness (critical) ---
+    "must_call_tools": Severity.CRITICAL,
+    "must_not_call_tools": Severity.CRITICAL,
+    "must_call_tools_in_order": Severity.CRITICAL,
+    "tool_call_args_contain": Severity.CRITICAL,
+    "response_contains_any": Severity.CRITICAL,
+    "response_contains_all": Severity.CRITICAL,
+    "response_contains_none": Severity.CRITICAL,
+    "response_matches_regex": Severity.CRITICAL,
+    "must_ask_clarification": Severity.CRITICAL,
+    "clarification_must_mention_any": Severity.CRITICAL,
+    # --- Performance / cost / format (warning) ---
+    "max_tool_calls": Severity.WARNING,
+    "max_latency_ms": Severity.WARNING,
+    "max_cost_usd": Severity.WARNING,
+    "min_response_chars": Severity.WARNING,
+    "max_response_chars": Severity.WARNING,
+}
+
+
+def assertion_severity(name: str, overrides: dict[str, Severity] | None = None) -> Severity:
+    """Resolve a case-level severity for one assertion name."""
+    if overrides and name in overrides:
+        return overrides[name]
+    return ASSERTION_SEVERITY_DEFAULTS.get(name, Severity.CRITICAL)
+
+
+# ---------------------------------------------------------------------------
 # Intent taxonomy (§6 — structured intent block)
 # ---------------------------------------------------------------------------
 
@@ -196,6 +246,12 @@ class EvalCase(BaseModel):
     repeat: int = Field(default=1, ge=1, le=10)
 
     expected: Expected = Field(default_factory=Expected)
+
+    # Per-case severity overrides. Maps assertion name -> Severity.
+    # Use sparingly — the defaults in ASSERTION_SEVERITY_DEFAULTS are correct
+    # for most cases. Override only when this specific case genuinely needs it
+    # (e.g. a latency-sensitive case where max_latency_ms should be critical).
+    severity_overrides: dict[str, Severity] = Field(default_factory=dict)
 
     tags: list[str] = Field(default_factory=list)
     provenance: Provenance | None = None

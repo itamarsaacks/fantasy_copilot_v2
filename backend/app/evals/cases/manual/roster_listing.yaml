@@ -1,0 +1,56 @@
+id: roster_listing
+description: |
+  User asks for their own roster. Agent should call get_my_roster, not
+  the team-by-name variant. Process-only — actual roster contents vary
+  by league.
+
+mode: live
+
+intent:
+  question_type: definitional
+  complexity: simple
+  domain: roster
+  answer_shape: list
+
+phrasings:
+  - "show me my roster"
+  - "who's on my team"
+  - "list my players"
+  - "what does my lineup look like"
+
+expected:
+  must_call_tools:
+    - get_my_roster
+  must_not_call_tools:
+    - get_team_roster        # this is the OTHER-team tool
+    - search_recent_news
+    - get_free_agents
+  # Loose vocabulary check — at least one of these should appear in a
+  # roster response (positions or count terms)
+  response_contains_any:
+    - "PG"
+    - "SG"
+    - "SF"
+    - "PF"
+    - "C"
+    - "roster"
+    - "starting"
+    - "bench"
+  # Hallucination guards
+  response_contains_none:
+    - "Dolphins"            # MIA in this app is the Heat
+    - "Cowboys"             # DAL Mavericks
+    - "Yankees"             # NYK Knicks
+    - "I don't have"
+    - "I cannot access"
+  max_tool_calls: 3
+  max_latency_ms: 20000
+  min_response_chars: 50    # an actual roster response shouldn't be empty
+
+tags:
+  - roster
+  - core_smoke
+
+provenance:
+  source: manual
+  source_chat_date: "2026-05-12"

@@ -14,7 +14,7 @@ from __future__ import annotations
 import re
 
 from app.evals.runner.result import AssertionFailure, ToolCallTrace
-from app.evals.schema import Expected
+from app.evals.schema import Expected, Severity, assertion_severity
 
 
 def check_all(
@@ -24,8 +24,17 @@ def check_all(
     final_response: str,
     latency_ms: int,
     cost_usd: float | None = None,
+    severity_overrides: dict[str, Severity] | None = None,
 ) -> list[AssertionFailure]:
-    """Run every applicable assertion. Return failures (empty = pass)."""
+    """Run every applicable assertion. Return failures (empty = pass).
+
+    Each failure carries a severity (critical or warning) used by the runner
+    to compute the PhrasingRun verdict. Severities come from the case's
+    `severity_overrides` if set, otherwise from ASSERTION_SEVERITY_DEFAULTS.
+    """
+
+    def sev(name: str) -> Severity:
+        return assertion_severity(name, severity_overrides)
 
     failures: list[AssertionFailure] = []
     tool_names = [tc.name for tc in tool_calls]
@@ -39,6 +48,7 @@ def check_all(
             failures.append(
                 AssertionFailure(
                     assertion="must_call_tools",
+                    severity=sev("must_call_tools"),
                     expected=expected.must_call_tools,
                     actual=tool_names,
                     detail=f"missing tool(s): {missing}",
@@ -51,6 +61,7 @@ def check_all(
             failures.append(
                 AssertionFailure(
                     assertion="must_not_call_tools",
+                    severity=sev("must_not_call_tools"),
                     expected=f"none of {expected.must_not_call_tools}",
                     actual=tool_names,
                     detail=f"forbidden tool(s) were called: {forbidden}",
@@ -68,6 +79,7 @@ def check_all(
             failures.append(
                 AssertionFailure(
                     assertion="must_call_tools_in_order",
+                    severity=sev("must_call_tools_in_order"),
                     expected=expected.must_call_tools_in_order,
                     actual=tool_names,
                     detail=f"order broken at step {idx} ('{expected.must_call_tools_in_order[idx]}')",
@@ -81,6 +93,7 @@ def check_all(
                 failures.append(
                     AssertionFailure(
                         assertion="tool_call_args_contain",
+                        severity=sev("tool_call_args_contain"),
                         expected={tool_name: required_args},
                         actual=tool_names,
                         detail=f"no call to {tool_name} found",
@@ -96,6 +109,7 @@ def check_all(
                 failures.append(
                     AssertionFailure(
                         assertion="tool_call_args_contain",
+                        severity=sev("tool_call_args_contain"),
                         expected={tool_name: required_args},
                         actual=[tc.args for tc in matching_calls],
                         detail=f"no {tool_name} call matched required args",
@@ -110,6 +124,7 @@ def check_all(
             failures.append(
                 AssertionFailure(
                     assertion="response_contains_any",
+                    severity=sev("response_contains_any"),
                     expected=expected.response_contains_any,
                     actual=final_response[:200],
                     detail="none of the expected phrases appeared",
@@ -122,6 +137,7 @@ def check_all(
             failures.append(
                 AssertionFailure(
                     assertion="response_contains_all",
+                    severity=sev("response_contains_all"),
                     expected=expected.response_contains_all,
                     actual=final_response[:200],
                     detail=f"missing phrase(s): {missing}",
@@ -134,6 +150,7 @@ def check_all(
             failures.append(
                 AssertionFailure(
                     assertion="response_contains_none",
+                    severity=sev("response_contains_none"),
                     expected=f"none of {expected.response_contains_none}",
                     actual=final_response[:200],
                     detail=f"forbidden phrase(s) appeared: {present}",
@@ -145,6 +162,7 @@ def check_all(
             failures.append(
                 AssertionFailure(
                     assertion="response_matches_regex",
+                    severity=sev("response_matches_regex"),
                     expected=expected.response_matches_regex,
                     actual=final_response[:200],
                     detail="regex did not match",
@@ -161,6 +179,7 @@ def check_all(
             failures.append(
                 AssertionFailure(
                     assertion="must_ask_clarification",
+                    severity=sev("must_ask_clarification"),
                     expected="agent should ask a clarifying question (no tool calls, response ends with '?')",
                     actual=f"tool_calls={len(tool_calls)}, ends_with_q={response_lower.rstrip().endswith('?')}",
                     detail="agent did not ask for clarification",
@@ -173,6 +192,7 @@ def check_all(
             failures.append(
                 AssertionFailure(
                     assertion="clarification_must_mention_any",
+                    severity=sev("clarification_must_mention_any"),
                     expected=expected.clarification_must_mention_any,
                     actual=final_response[:200],
                     detail="clarification didn't reference any expected phrase",
@@ -185,6 +205,7 @@ def check_all(
         failures.append(
             AssertionFailure(
                 assertion="max_tool_calls",
+                severity=sev("max_tool_calls"),
                 expected=f"<= {expected.max_tool_calls}",
                 actual=len(tool_calls),
                 detail=f"agent made {len(tool_calls)} tool calls",
@@ -195,6 +216,7 @@ def check_all(
         failures.append(
             AssertionFailure(
                 assertion="max_latency_ms",
+                severity=sev("max_latency_ms"),
                 expected=f"<= {expected.max_latency_ms}ms",
                 actual=f"{latency_ms}ms",
                 detail=f"agent took {latency_ms}ms (budget {expected.max_latency_ms}ms)",
@@ -205,6 +227,7 @@ def check_all(
         failures.append(
             AssertionFailure(
                 assertion="max_cost_usd",
+                severity=sev("max_cost_usd"),
                 expected=f"<= ${expected.max_cost_usd:.4f}",
                 actual=f"${cost_usd:.4f}",
                 detail="cost exceeded budget",
@@ -218,6 +241,7 @@ def check_all(
         failures.append(
             AssertionFailure(
                 assertion="min_response_chars",
+                severity=sev("min_response_chars"),
                 expected=f">= {expected.min_response_chars}",
                 actual=response_len,
                 detail=f"response was {response_len} chars",
@@ -228,6 +252,7 @@ def check_all(
         failures.append(
             AssertionFailure(
                 assertion="max_response_chars",
+                severity=sev("max_response_chars"),
                 expected=f"<= {expected.max_response_chars}",
                 actual=response_len,
                 detail=f"response was {response_len} chars",

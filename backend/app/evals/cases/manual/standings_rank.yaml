@@ -1,0 +1,48 @@
+id: standings_rank
+description: |
+  User asks where they stand in the league. Agent should call
+  get_league_summary (which contains every team's standings) and reference
+  position / rank. Process-only — the actual rank varies per league.
+
+mode: live
+
+intent:
+  question_type: definitional
+  complexity: simple
+  domain: standings
+  answer_shape: number
+
+phrasings:
+  - "what's my rank in the league"
+  - "where do I stand"
+  - "how am I doing this season"
+  - "what's my standing"
+
+expected:
+  must_call_tools:
+    - get_league_summary
+  must_not_call_tools:
+    - search_recent_news
+    - get_free_agents
+  response_contains_any:
+    - "rank"
+    - "place"
+    - "standing"
+    - "position"
+    - "#"             # e.g. "#2"
+  response_contains_none:
+    - "Dolphins"
+    - "Cowboys"
+    - "Yankees"
+    - "I don't have"
+    - "I cannot access"
+  max_tool_calls: 3
+  max_latency_ms: 20000
+
+tags:
+  - standings
+  - core_smoke
+
+provenance:
+  source: manual
+  source_chat_date: "2026-05-12"

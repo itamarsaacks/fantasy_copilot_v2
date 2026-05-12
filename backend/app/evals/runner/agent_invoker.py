@@ -110,7 +110,6 @@ async def invoke(
         case_id=case_id,
         phrasing=user_message,
         repeat_index=repeat_index,
-        passed=False,
         agent_thread_id=thread_id,
     )
 

@@ -1,0 +1,52 @@
+id: stat_leader_rebounds
+description: |
+  User asks who leads the league in rebounds. Agent should call
+  get_top_by_stat with stat=REB (the column name) and report a list.
+  Process-only — actual leaders shift with each sync.
+
+mode: live
+
+intent:
+  question_type: comparative
+  complexity: simple
+  domain: standings
+  answer_shape: list
+
+phrasings:
+  - "who leads the league in rebounds"
+  - "top rebounders this season"
+  - "best rebounding players right now"
+  - "rebound leaders"
+
+expected:
+  must_call_tools:
+    - get_top_by_stat
+  must_not_call_tools:
+    - get_my_roster
+    - get_team_roster
+    - search_recent_news
+  response_contains_any:
+    - "rebound"
+    - "REB"
+    - "boards"
+  response_contains_none:
+    - "I don't have"
+    - "I cannot determine"
+    - "Dolphins"
+    - "Cowboys"
+    - "Yankees"
+    # Strategic framing — even if user is in a points league, "categories"
+    # shouldn't be invoked unprompted for a simple leaderboard question.
+    - "category coverage"
+  max_tool_calls: 3
+  max_latency_ms: 20000
+  min_response_chars: 60
+
+tags:
+  - standings
+  - stat_leaders
+  - core_smoke
+
+provenance:
+  source: manual
+  source_chat_date: "2026-05-12"

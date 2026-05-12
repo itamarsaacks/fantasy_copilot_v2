@@ -1,0 +1,46 @@
+id: trade_deadline
+description: |
+  User asks when the trade deadline is. Agent should call get_league_rules
+  (which projects settings_json.trade_end_date). Should NOT search the web —
+  this is in the DB. Process-only.
+
+mode: live
+
+intent:
+  question_type: definitional
+  complexity: simple
+  domain: rules
+  answer_shape: explanation
+
+phrasings:
+  - "when's the trade deadline"
+  - "trade deadline?"
+  - "how long do I have to make trades"
+  - "until when can I trade"
+
+expected:
+  must_call_tools:
+    - get_league_rules
+  must_not_call_tools:
+    - search_recent_news       # this is in the DB, not on the web
+    - get_free_agents
+    - get_my_roster
+  response_contains_any:
+    - "trade"
+    - "deadline"
+    - "20"                     # any year reference
+  response_contains_none:
+    - "I don't have"
+    - "I cannot determine"
+    - "Dolphins"
+    - "Cowboys"
+  max_tool_calls: 2
+  max_latency_ms: 15000
+
+tags:
+  - rules
+  - core_smoke
+
+provenance:
+  source: manual
+  source_chat_date: "2026-05-12"
