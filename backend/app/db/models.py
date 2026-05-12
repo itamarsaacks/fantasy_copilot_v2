@@ -328,6 +328,9 @@ class NbaSchedule(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     game_id: Mapped[str] = mapped_column(String, unique=True, index=True)
     game_date: Mapped[date] = mapped_column(Date, index=True, nullable=False)
+    tipoff_at: Mapped[datetime | None] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
     home_team_abbr: Mapped[str] = mapped_column(String, nullable=False)
     away_team_abbr: Mapped[str] = mapped_column(String, nullable=False)
     status: Mapped[str] = mapped_column(String, nullable=False)  # scheduled, live, final

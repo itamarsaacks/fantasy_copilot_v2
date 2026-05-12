@@ -45,19 +45,44 @@ export type HealthResponse = {
 };
 
 // /api/team/{league_id}
+export type NextGame = {
+  date: string;
+  opponent: string;
+  home: boolean;
+  status: string;
+  tipoff_at: string | null;
+  is_today: boolean;
+};
+
+export type SeasonStats = {
+  gp: number | null;
+  pts: number | null;
+  reb: number | null;
+  ast: number | null;
+  stl: number | null;
+  blk: number | null;
+  tov: number | null;
+};
+
 export type TeamPlayerView = {
   name: string;
   nba_team: string | null;
-  primary_position: string | null;
   eligible_positions: string[];
   selected_position: string | null;
   status: string | null;
   status_full: string | null;
   injury_note: string | null;
-  percent_owned: number | null;
   projected_fps_per_game: number | null;
   games_this_week: number;
   back_to_back_count: number;
+  next_game: NextGame | null;
+  season_stats: SeasonStats;
+};
+
+export type RosterBucket = {
+  label: string;
+  total_projected_fps_per_game: number;
+  players: TeamPlayerView[];
 };
 
 export type TeamResponse = {
@@ -65,6 +90,8 @@ export type TeamResponse = {
   league_name: string;
   team_name: string;
   manager_name: string | null;
-  by_position: Record<string, TeamPlayerView[]>;
+  starters: RosterBucket;
+  bench: RosterBucket;
+  ir: RosterBucket;
   total_projected_fps_per_game: number;
 };

@@ -91,10 +91,20 @@ async def fetch_day(client: httpx.AsyncClient, day: date) -> list[dict[str, Any]
             "STATUS_POSTPONED": "postponed",
         }.get(status_raw, "scheduled")
 
+        # ESPN gives event.date as ISO timestamp with Z suffix.
+        tipoff_iso = event.get("date")
+        tipoff_at: datetime | None = None
+        if tipoff_iso:
+            try:
+                tipoff_at = datetime.fromisoformat(tipoff_iso.replace("Z", "+00:00"))
+            except ValueError:
+                tipoff_at = None
+
         rows.append(
             {
                 "game_id": game_id,
                 "game_date": day,
+                "tipoff_at": tipoff_at,
                 "home_team_abbr": home_abbr,
                 "away_team_abbr": away_abbr,
                 "status": status,
@@ -140,6 +150,7 @@ async def sync_schedule(lookahead_days: int = LOOKAHEAD_DAYS) -> dict[str, int]:
                             index_elements=["game_id"],
                             set_={
                                 "status": row["status"],
+                                "tipoff_at": row["tipoff_at"],
                                 "home_score": row["home_score"],
                                 "away_score": row["away_score"],
                                 "updated_at": datetime.now(timezone.utc),
