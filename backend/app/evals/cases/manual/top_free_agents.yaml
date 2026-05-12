@@ -2,8 +2,13 @@ id: top_free_agents
 description: |
   User asks for the best available free agents. Agent should call either
   top_projected_free_agents (preferred — projection-aware) or get_free_agents
-  (basic ownership-ranked). Process-only — the actual recommendations vary
-  per league.
+  (ownership-ranked). Process-only — the specific recommendations vary per
+  league and per sync.
+
+  Tool budget: 3 total. The agent MAY call search_recent_news for injury
+  context on flagged players, but should not exceed the budget. Once we
+  build the injury_status table (see docs/BACKLOG.md #1), news search drops
+  to zero for this case.
 
 
 intent:
@@ -19,26 +24,39 @@ phrasings:
   - "which free agents should I look at"
 
 expected:
-  # Either tool is acceptable — we don't enforce both. The runner's
-  # must_call_tools requires EVERY listed tool, so we use response vocab
-  # to validate the agent answered with FA-style content.
-  # (We could split into two cases if we wanted to enforce one or the other.)
+  # Either FA-listing tool is acceptable. Don't reach into another team's
+  # roster — that's a clear misroute.
   must_not_call_tools:
     - get_team_roster
-    - search_recent_news
   response_contains_any:
+    # FA / waiver vocabulary
     - "free agent"
     - "available"
+    - "availability"
     - "owned"
     - "pick up"
+    - "pickup"
     - "waiver"
+    # Health framing (we WANT the agent to surface healthy options)
+    - "healthy"
+    - "injured"
+    - "INJ"
+    - "GTD"
+    - "out"
+    # Projection / recommendation framing
+    - "projected"
+    - "fps"
+    - "options"
+    - "targets"
   response_contains_none:
     - "I don't have"
     - "I cannot determine"
     - "Dolphins"
     - "Cowboys"
     - "Yankees"
-  max_tool_calls: 4
+  # Tight budget: 1 FA tool call + at most 1-2 news lookups for injury context.
+  # Three news calls is the over-eager pattern caught on 2026-05-12.
+  max_tool_calls: 3
   max_latency_ms: 25000
   min_response_chars: 80
 
