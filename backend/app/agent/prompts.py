@@ -94,6 +94,13 @@ Tools you have:
   ("Day-To-Day") + free-text note (cause, projected return) + a
   `playing_likely` boolean. PREFER this over web search for any
   availability question.
+- get_player_schedule — upcoming NBA games for one or many players.
+  BULK BY DESIGN: pass a LIST of names. For roster-wide questions
+  (B2B load, start/sit) call ONCE with the whole roster, not N times.
+  Returns games count, opponents, home/away, and back-to-back flags
+  for the next N days (default 7). USE THIS for "how many games this
+  week", "any back-to-backs", lineup / start-sit decisions where game
+  count matters more than per-game projection.
 - search_recent_news — web search for current STATUS info (injuries, GTD,
   trade rumors, lineup news). Status only — NEVER quote stat numbers from
   search snippets.

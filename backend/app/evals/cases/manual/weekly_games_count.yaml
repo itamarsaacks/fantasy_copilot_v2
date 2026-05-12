@@ -2,14 +2,9 @@ id: weekly_games_count
 description: |
   User asks how many games a player has this week. Complete answer:
     1) game count this fantasy week
-    2) ideally the opponents and home/away
+    2) opponents and home/away
     3) any back-to-back flags
-
-  KNOWN GAP: there is no schedule tool today. This case will fail until
-  BACKLOG #3 (get_player_schedule) lands. The case is written for the
-  POST-fix world — it's a contract, not a test of today.
-
-  When the tool ships, must_call_tools should include get_player_schedule.
+  Essential: get_player_schedule (BACKLOG #3, shipped 2026-05-12).
 
 intent:
   question_type: definitional
@@ -24,6 +19,8 @@ phrasings:
   - "how many times does Embiid play this week"
 
 expected:
+  must_call_tools:
+    - get_player_schedule
   must_not_call_tools:
     - get_top_players_overall
     - top_projected_free_agents
@@ -46,7 +43,6 @@ expected:
 tags:
   - matchups
   - schedule
-  - blocked_by_backlog_3
 
 provenance:
   source: manual

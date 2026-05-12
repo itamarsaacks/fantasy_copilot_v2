@@ -31,6 +31,7 @@ from app.config import get_settings
 from app.db.engine import SessionLocal
 from app.db.models import League, User
 from app.engine.projection import compute_league_projections
+from app.jobs.sync_schedule import sync_schedule
 from app.jobs.sync_stats import sync_league_stats
 from app.jobs.sync_yahoo import sync_league
 
@@ -100,6 +101,17 @@ def start() -> None:
         max_instances=1,
         coalesce=True,
         replace_existing=True,
+    )
+    # Global, league-agnostic. Once a day is enough — schedules only change
+    # when games complete or get rescheduled. Cheap (~30 ESPN calls).
+    _scheduler.add_job(
+        sync_schedule,
+        trigger=IntervalTrigger(hours=24),
+        id="nba_schedule_sync",
+        max_instances=1,
+        coalesce=True,
+        replace_existing=True,
+        next_run_time=datetime.now(timezone.utc) + timedelta(seconds=30),
     )
     _scheduler.start()
     log.info(

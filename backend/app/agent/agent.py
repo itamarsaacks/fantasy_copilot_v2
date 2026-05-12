@@ -37,6 +37,7 @@ from app.agent.tools.projections import (  # noqa: E402
     top_projected_free_agents,
 )
 from app.agent.tools.roster import get_my_roster  # noqa: E402
+from app.agent.tools.schedule import get_player_schedule  # noqa: E402
 from app.agent.tools.team import get_team_roster  # noqa: E402
 from app.agent.tools.web_search import search_recent_news  # noqa: E402
 
@@ -54,6 +55,7 @@ ALL_TOOLS = [
     compare_players,
     get_team_strength,
     get_injury_status,
+    get_player_schedule,
     search_recent_news,
 ]
 

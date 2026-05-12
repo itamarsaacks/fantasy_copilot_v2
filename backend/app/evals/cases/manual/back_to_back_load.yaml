@@ -6,9 +6,8 @@ description: |
     2) impact on rostered players' availability
     3) actionable recommendation (start backups, stream from B2B teams)
 
-  KNOWN GAP: there is no schedule tool today. This case will fail until
-  BACKLOG #3 (get_player_schedule with is_back_to_back) lands. The case
-  is a contract, not a test of today.
+  Essential: get_my_roster + get_player_schedule for each player.
+  BACKLOG #3 shipped 2026-05-12.
 
 intent:
   question_type: definitional
@@ -23,6 +22,9 @@ phrasings:
   - "back-to-back games this week"
 
 expected:
+  must_call_tools:
+    - get_my_roster
+    - get_player_schedule
   must_not_call_tools:
     - search_recent_news
     - get_top_players_overall
@@ -44,7 +46,6 @@ expected:
 tags:
   - matchups
   - schedule
-  - blocked_by_backlog_3
 
 provenance:
   source: manual
