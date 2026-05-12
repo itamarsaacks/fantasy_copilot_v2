@@ -463,50 +463,100 @@ Once stable, run on every commit. Block merges that drop pass rate below thresho
 - Design doc (this file)
 - Pydantic schema (`app/evals/schema.py`)
 - YAML loader (`app/evals/loader.py`)
-- Directory tree + first manual case
-- Directory tree: cases/{manual,promoted,generated}/, probes/, runner/, digests/
+- Directory tree: cases/{manual,promoted,generated}/, runner/, digests/
 
-### Phase E1 — Live runner ✅ (committed 2026-05-12, ba9c7a6 + 23a8ef0)
+### Phase E1 — Live runner + first cases ✅ (committed 2026-05-12, ba9c7a6 + 23a8ef0)
 
-- Runner loads cases, invokes the real agent against the live local DB, captures tool calls + final response, evaluates assertions, prints pass/fail to console
+- Runner loads cases, invokes the real agent against the live local DB,
+  captures tool calls + final response, evaluates assertions, prints
+  pass/fail to console
 - Severity tiers (critical / warning) and Verdicts (🟢/🟡/🔴/💥)
-- Starter case + 5 more (roster, standings, trades, waivers, free agents, stat leaders)
+- 6 cases covering: waivers, roster, standings, stat leaders, FAs, trade deadline
 - **24 / 24 phrasings passing**
 
-### Phase E2 — Postgres results + LangSmith integration (½ session)
+### Phase E1.6 — Drop snapshots (simplification) ✅ (committed 2026-05-12, 136365d)
+
+- Removed snapshot machinery entirely: Mode enum, snapshot_id field, two
+  schema validators, scripts/eval_capture_snapshot.py, snapshots dir.
+- Removed `response_contains_all` + `response_matches_regex` assertions —
+  content-equality belongs at the tool layer, not agent layer.
+- Doc refactored across §4, §6, §7, §9, §10, §11, §12, §13 to reflect
+  process-only harness.
+
+### Phase E2 — Postgres persistence + LangSmith routing ✅ (committed 2026-05-12, 12e919a)
 
 - `eval_runs` + `eval_case_results` tables + Alembic migration
-- Runner writes results to Postgres
-- Runner attaches LangSmith trace ID / URL / thread ID per result
-- LangSmith Dataset mirror (push cases as a LangSmith dataset)
-- Separate LangSmith project (`fantasy-copilot-evals`) so eval traces don't pollute prod
+- Runner writes results to Postgres (best-effort, never blocks console output)
+- Each result row carries `langsmith_trace_id` + `langsmith_trace_url` so a
+  failing row → trace inspection in two clicks
+- LANGSMITH_PROJECT=fantasy-copilot-evals env override at runner startup so
+  eval traces don't pollute the prod chat project
+- Verified: 37 phrasings across 10 cases persisted with full lineage
 
-**Goal:** every run is queryable. Dashboard becomes possible.
+### Phase E2.1 — 4 more cases (broader coverage) ✅ (committed 2026-05-12, 5dd5e72)
 
-### Phase E3 — Promoter (½ session)
+- clarification_pronoun_no_context, news_status_explicit, compare_two_players,
+  team_strength_weakness
+- Total suite: 10 cases / 37 phrasings, all 🟢
 
-- `python -m app.evals.promoter <trace_id>` script
-- Pulls trace from LangSmith
-- Interactive CLI to fill in assertion fields, suggests defaults
-- Writes YAML draft to `cases/promoted/`
+### Phase E2.2 — eval_stats.py read-only CLI ✅ (committed 2026-05-12, b44cbe5)
 
-**Goal:** capturing new cases takes 2 minutes per chat instead of 20.
+- Synchronous CLI that queries eval_runs + eval_case_results
+- Sections: suite health, recent runs, slices by intent dimension, slow
+  phrasings, top failure modes. Foundation for the future dashboard.
 
-### Phase E4 — `eval-author` skill (1-2 sessions) — **the "no-manual-authoring" unlock**
+### Phase 8.8 — Prompt tweak from harness signal ✅ (committed 2026-05-12, 5bfb6f9)
 
-- `app/evals/probes/` framework + first contract: `league_rules.py`
-- `eval-author` skill that enumerates → applies contract → phrases → dry-runs → saves
-- Generation uses Opus; agent under test stays Sonnet
-- Weekly digest writer (`app/evals/digests/{date}.md`)
-- 30 generated cases for `league_rules` topic seeded into the suite
+- Caught by E2 harness: agent fired search_recent_news 3× on one FA list
+  question. Prompt fix: ≤2 news searches per turn, trust DB-side status
+  fields, healthy-first FA framing.
+- Case fix: expanded vocab list, tightened max_tool_calls budget.
+- BACKLOG.md created with injury_status table design for future phase.
 
-**Goal:** `/author-evals --topic X` produces a usable case batch end-to-end. After this, you stop authoring cases by hand for any topic. See §13 for full design.
+### Phase E3 — LangSmith trace fetcher (~½ session) — ENABLES §15 LOOP
 
-### Phase E5 — Dashboard (later, separate effort)
+- `scripts/inspect_trace.py <trace_id_or_url>` reads via langsmith SDK
+- Prints user message, every tool call + args + result, final response,
+  tokens, latency in a human-readable format
+- This is the foundation of the §15 bad-chat triage loop — without it,
+  Claude can't autonomously read what went wrong in a real chat
 
-- Frontend page that reads `eval_runs` + `eval_case_results`
-- Charts: pass rate over time, cost, latency, failure clusters
-- Filters: intent dimensions, tag, case
+### Phase E4 — Seed-coverage case batch (1 session, in collaboration with Itamar) — **the suite-broadening pass**
+
+- Walk every intent cluster in §13 (Roster, Standings, Stat leaders, FAs,
+  Trades, Projections, Schedule, News, Team strength, League rules,
+  Multi-turn, Clarification, Edge cases, Adversarial)
+- For each, Claude proposes 1–3 cases; Itamar approves; case lands
+- Target: ~40–60 additional cases, bringing the suite from 10 → 50+
+- Verified via per-case runs as we go; full sweep at the end
+
+### Phase E5 — Admin gate (½ session)
+
+- `ADMIN_EMAILS` env var
+- `is_admin` derived field on `get_current_user` dependency
+- Decorator / dependency `require_admin` for sensitive routes
+- Migrates `/leagues/debug-sync` to use it too (CLAUDE.md hardening item)
+
+### Phase E6 — Dashboard backend (1 session)
+
+- New admin-gated routes under `/api/admin/evals/*` (cases, runs, run-by-id,
+  case-history, trigger-run, job-status, slices)
+- The trigger route kicks off the runner in a background task and writes
+  results to `eval_runs` as usual
+- Job status polled via short-lived `jobs` table or in-memory dict
+
+### Phase E7 — Dashboard frontend (1 session)
+
+- Next.js `/eval` route, admin-only (404 for non-admins)
+- Sidebar tab conditionally rendered for admins
+- Six views from §16: headline health, recent runs, case library, trigger
+  surface, slices charts, failure clusters
+
+### Phase E8 (later) — Cron + weekly digest
+
+- Only when case count grows past ~100
+- Nightly full-suite cron + weekly digest in `app/evals/digests/{date}.md`
+- Hard alerts on pass-rate drop > 5% or new errored case
 
 ---
 
@@ -574,119 +624,88 @@ If you forget what a word means, search this file:
 
 ---
 
-## 13. Automated case generation (the `eval-author` skill)
+## 13. Where cases come from — Claude as case author
 
-§8 (Lifecycle) describes how a *human* promotes a real chat into a case — the **deep / high-touch** path: a few cases per week, hand-validated.
+Cases enter the suite through two pathways:
 
-This section describes the **wide / hands-off** path: an automated generator that enumerates the topic space and writes hundreds of cases without human authoring.
+| Pathway | When | Volume | Cadence |
+|---------|------|--------|---------|
+| **Seed coverage** | Claude thinks hard about every user intent and writes cases for them upfront | ~50–80 cases by end of seeding | Done in batches across a few sessions |
+| **Triage cases** | A real chat surfaces a behavior we hadn't tested. Claude proposes a new case (or an update to an existing one) following the §15 loop | ~1–3 per real bug surfaced | Reactive, organic |
 
-### The hybrid model
+Both pathways are **written by Claude, approved by Itamar**. No standalone
+generator service, no separate Opus pipeline, no skill machinery. The
+authoring happens inside the normal Claude Code conversation — Claude
+proposes the YAML, Itamar approves the diff, the case lands. The author
+*is* the assistant.
 
-| Source | Volume | What it tests | Authored by |
-|--------|--------|---------------|-------------|
-| **Generated** (this section) | high (100s) | Tool routing, hallucination guards, format, cost, behavior under paraphrase | Opus, via the skill |
-| **Promoted** (§8) | low (~1/week) | Multi-turn flows, judgment-call behavior, recommendation framing — from real LangSmith traces worth locking in | Human, from a real chat |
+### Self-reference mitigation, the simple version
 
-Generated covers most of the agent's behavior surface — every well-formed question gets covered. Promoted fills the gap where real-world judgment or multi-turn flow matters.
+The original design called for a separate Opus pipeline to paraphrase cases
+so that the "author model" differed from the "agent model" (Sonnet). After
+the §4 / §15 simplifications, that machinery is gone. The remaining
+mitigations against author/agent blind-spot alignment are:
 
-### The process-first principle
+1. **Human gate.** Itamar approves every case before it lands. The eval
+   suite is a contract Itamar signs off on, not a Claude-only artifact.
+2. **Diverse phrasings per case.** Each case carries 3–5 paraphrasings —
+   terse vs verbose, jargon vs plain English, fragments vs full sentences.
+   If Claude has a phrasing-shape blind spot, the paraphrasings expose it.
+3. **Real-chat triage** (§15). Cases that come from real failed chats are
+   grounded in *user* language, not Claude's idea of user language. As the
+   triage flow runs, the suite drifts toward real-world distribution.
 
-The generator only writes **behavior assertions**, never content assertions. It never asserts the agent's answer text against a specific value — that's the wrong layer.
+### What seed coverage looks like
 
-What the generator can assert:
+Claude's job, across a few seeding sessions, is to think through every
+distinct user intent a fantasy-NBA copilot user would naturally have, and
+write a case for it. Examples of intent clusters Claude should walk through:
 
-- `must_call_tools` — derived from a topic-to-tool mapping (e.g. waivers → `get_league_rules`)
-- `must_not_call_tools` — sanity guards (e.g. don't call `search_recent_news` for a rules question)
-- `response_contains_any` — loose-OR'd lists of expected vocabulary (e.g. for waivers: `["continuous", "daily", "FAAB", "claim", "process"]` — at least one must appear)
-- `response_contains_none` — hallucination blacklist for the topic (e.g. for NBA team abbreviations: `["Dolphins", "Cowboys", "Yankees"]`)
-- `must_ask_clarification` — for queries the generator marks as ambiguous on purpose
+| Cluster | Sample intents |
+|---------|----------------|
+| **Roster** | "show me my roster", "who's on team X" |
+| **Standings** | "what's my rank", "league leader by points_for" |
+| **Stat leaders** | "top in rebounds", "best assists per game last 30 days" |
+| **Free agents / waivers** | "best FAs", "should I pick up X", waiver day mechanics, FAAB balance, max adds |
+| **Trades** | "compare A and B for trade", "trade deadline", "trade ratify rules" |
+| **Projections** | "project X this week", "highest projected FA", "best per-game vs season-total" |
+| **Matchups / schedule** | "who has the most games this week", "back-to-back load" |
+| **News / status** | "any news on X", "is X playing tonight", "when's X back" |
+| **Team strength** | "where am I weak", "what does my team need" (points-league framing!) |
+| **League rules / meta** | "how does FAAB work", "playoff bracket", "draft type" |
+| **Multi-turn flows** | pronoun resolution, topic switching, "and second?" follow-ups |
+| **Clarification cases** | ambiguous queries that SHOULD trigger ask-back behavior |
+| **Edge cases** | empty roster (new user), off-season behavior, traded players, two-way contracts |
+| **Adversarial** | NFL-team-name traps (MIA / NYK / DAL), category framing in a points league |
+
+For each intent, Claude writes the YAML following the §6 spec and the
+process-only assertion rules (§4, §6). Each case carries 3–5 phrasings, a
+realistic intent classification, the right tool routing, a vocabulary
+guard, and a hallucination blacklist.
+
+### Process-only assertions (recap)
+
+What every Claude-authored case can use:
+
+- `must_call_tools` — tools the agent must call for this intent
+- `must_not_call_tools` — tools that would signal misrouting
+- `response_contains_any` — loose-OR'd vocabulary (`["continuous", "daily", "FAAB"]` — at least one)
+- `response_contains_none` — never-OK phrases (load-bearing hallucination guard)
+- `must_ask_clarification` — for ambiguous queries the agent should ask back on
 - Cost / latency / length budgets
 
-What the generator **cannot** assert (since the whole harness is process-only):
+What cases never use:
 
-- Specific numerical values (ranks, FPS, FAAB balance, schedule counts)
+- Specific numerical values (rank, FPS, FAAB balance)
 - Specific player names as a required answer
 - Exact text matches
 
-If a case calls for one of these, the right move is either:
-- Rephrase it as a hallucination guard (e.g. "agent must NOT recommend a rostered player" instead of "agent must recommend Player X")
-- Move the assertion down to the tool/engine layer, where it belongs
+If a case calls for one of those, the right move is to convert it into a
+hallucination guard or move the assertion down to the tool layer (§10).
 
-### What kinds of questions the generator covers
+### Repeat / phrasings / multi-turn (still supported)
 
-| Question class | Coverage | Why |
-|----------------|----------|-----|
-| "What are my waiver days?" | ✅ | Tool routing + topic vocabulary |
-| "When is the trade deadline?" | ✅ | Tool routing + topic vocabulary |
-| "Who's on team Foo?" | ✅ | Tool routing + must-not-hallucinate names |
-| "Top 5 in rebounds" | ✅ | Tool routing + format (list/table) |
-| "Should I trade Embiid for Sabonis?" | ✅ (behavior only) | Tool routing (`compare_players`) + must-not-hallucinate. **No verdict assertion.** |
-| "Who should I pick up?" | ✅ (behavior only) | Tool routing (`get_free_agents` + `get_player_projection`) + must-not-recommend-rostered-player |
-| "Is X having a good season?" | ✅ (behavior only) | Tool routing + must-cite-a-tool |
-
-The generator covers every common question type — it just asserts on the **right things** (process), not on outputs we can't reliably predict.
-
-### Self-reference mitigation
-
-To reduce blind-spot alignment between author and agent:
-
-- **Different model.** Generation uses Claude Opus. The agent under test runs Sonnet. Symmetric biases get broken.
-- **Contract-grounded, not LLM-grounded.** Assertions come from a **topic contract** — a small Python module per topic that hard-codes "for this topic the agent must call tool X, must reference vocabulary Y, must never say Z." The generator LLM only writes paraphrasings and picks which contract to apply. It never invents what's correct.
-- **Independent spot-checks.** Every Nth generated case is flagged for human review before it enters the regression suite.
-
-### What the `eval-author` skill does
-
-Invocation:
-
-```
-/author-evals --topic waivers --count 30
-```
-
-Pipeline per invocation:
-
-1. **Enumerate** — load the topic's contract module. Walk the (question_type × complexity × answer_shape) taxonomy filtered to what the contract declares supported. Each cell becomes one case slot.
-2. **Apply contract** — for each slot, copy the topic's hard-coded behavior assertions: `must_call_tools`, `must_not_call_tools`, vocabulary for `response_contains_any`, hallucination blacklist for `response_contains_none`, cost/latency budgets.
-3. **Phrase** — call Opus to generate 3-5 paraphrasings of the user message. Variations cover: terse vs verbose, jargon vs plain English, full sentences vs fragments. All phrasings share the same assertions.
-4. **Assemble** — write the case YAML with the structured `intent` block, `phrasings` list, the contract's assertions, `provenance.source: generated`.
-5. **Dry-run** — execute every phrasing against the live local DB. Capture pass/fail.
-6. **Verdict:**
-   - All phrasings pass → save to `app/evals/cases/generated/{topic}/{case_id}.yaml`.
-   - All phrasings fail → flag for human review. Likely a contract bug or a real agent regression — don't auto-commit.
-   - Mixed → save the case but mark `provenance.flaky_at_generation: true` for follow-up.
-7. **Log** — append a generation summary to `app/evals/digests/generation_{date}.md`.
-
-The skill never overwrites cases under `cases/promoted/` or `cases/manual/`. Only `cases/generated/{topic}/` is generator-owned.
-
-### Topic contracts
-
-Each topic has one Python module that hard-codes its behavior contract:
-
-```
-app/evals/probes/
-├── waivers.py          # waiver-related behavior contract
-├── trades.py           # trade rules + deadline contract
-├── roster.py           # roster composition contract
-├── standings.py        # rank / points_for / FAAB contract
-├── projections.py      # projection-tool behavior contract
-├── league_rules.py     # playoffs / draft / scoring contract
-├── stat_leaders.py     # top-N-by-stat contract
-└── news_status.py      # injury / status / news contract
-```
-
-A contract exposes:
-
-- `supported_intents() -> list[Intent]` — which question_type × complexity × answer_shape cells this topic covers
-- `required_tools(intent) -> list[str]` — which tool(s) the agent must call for that intent
-- `forbidden_tools(intent) -> list[str]` — tools that signal misrouting
-- `expected_vocabulary(intent) -> list[str]` — loose-OR'd phrases for `response_contains_any`
-- `hallucination_blacklist() -> list[str]` — never-OK phrases (e.g. NFL team names, "I don't have")
-- `seed_prompts(intent) -> list[str]` — starting points for Opus to paraphrase from
-
-Adding a new topic = writing one contract module (~50 lines). The skill picks it up automatically.
-
-### Repeat / phrasings / multi-turn in the case YAML
-
-The schema supports the three reliability dimensions discussed:
+The schema supports three reliability dimensions:
 
 ```yaml
 # Paraphrase robustness
@@ -703,34 +722,42 @@ repeat: 3
 conversation_prefix:
   - role: user
     content: "show me my roster"
-  - role: assistant   # captured from a real run, used verbatim
+  - role: assistant
     content: "Here's your roster: ..."
 ```
 
-Each phrasing × repeat = one row in `eval_case_results`. So a case with 4 phrasings and repeat=3 produces 12 result rows. The dashboard rolls them up to per-case pass rate.
+Each phrasing × repeat = one row in `eval_case_results`. So a case with
+4 phrasings and repeat=3 produces 12 result rows. The dashboard rolls them
+up to per-case pass rate.
 
-### Monitoring (the realistic floor)
+### Monitoring
 
-You don't author cases. You don't run the harness manually. But "zero monitoring" produces noise. The realistic floor:
+We don't run cron sweeps in v1. The §15 workflow keeps cases fresh
+case-by-case. Full-suite runs happen on Itamar's command. The dashboard
+(§16) gives at-a-glance health when Itamar wants to check.
 
-- **Daily cron** (or per-commit on main) runs the full suite
-- **Weekly digest** auto-generated and saved to `evals/digests/{date}.md`:
-  - Pass rate trend (last 7 runs)
-  - New regressions (cases that flipped from pass → fail)
-  - Newly-flaky cases (pass rate < 95%)
-  - Cost / latency drift
-  - Top 5 failing assertions across the whole suite
-  - Direct LangSmith links to the worst failures
-- **Hard alert** (email or Slack later) only on:
-  - Pass-rate drop > 5% vs prior run
-  - New errored case (crash, not assertion fail)
-  - Cost spike > 25%
+We can add cron + a weekly digest later if the case count grows beyond
+what casual sweeps can cover (probably >100). For now, on-demand is the
+right cadence and matches the cost policy (§14).
 
-Reading the weekly digest is ~5 minutes. That's the floor of human involvement.
+### What's NOT in this section anymore
 
-### Phasing (slots into §9)
+Earlier drafts of this doc described a standalone `eval-author` skill —
+a slash-command pipeline that loaded a Python "topic contract" module,
+ran Opus to paraphrase prompts, dry-ran the generated cases, and
+auto-committed them. We removed that machinery because:
 
-The generator is Phase E4 — depends on the runner (E1 ✅) and result schema (E2).
+1. The §15 triage loop covers the "wide net" use case organically — every
+   real bug becomes a case, and Claude can also seed broad intents in
+   batches without standalone machinery.
+2. The topic-contract abstraction was solving a problem (separating
+   generator from agent) that the human-approval gate already solves.
+3. One fewer subsystem to maintain. Cases stay close to the rest of the
+   codebase, edited the same way as any other YAML.
+
+If we ever want to generate hundreds of cases per topic in a single batch,
+we can revive the idea. Until then, hand-authoring (by Claude, approved by
+Itamar) is the right shape.
 
 ---
 
@@ -799,6 +826,289 @@ not on every commit. Tier by risk and frequency.
 - When mature-suite cost projection exceeds $50/day
 - When the smoke tier grows past ~15 cases (it shouldn't; trim it)
 - When we add expensive-per-call tools (e.g. real-time NBA APIs) that bypass the standard tool cost profile
+
+---
+
+## 15. Working with the harness day-to-day
+
+This section describes how the eval harness *actually* gets used between
+Itamar and Claude Code. It's the operating manual — read this if you forget
+how the loop works.
+
+### Two activities, very different cadences
+
+| Activity | When | How often |
+|----------|------|-----------|
+| **Triage a bad chat** | A specific agent turn went wrong | Reactive — every time you spot one |
+| **Full-suite sweep** | You want a health check or pre-merge confidence | On your explicit command, e.g. "run the full suite" |
+
+Every other change to the agent (prompts, tools, etc.) only re-runs the
+**case(s) related to that change**. We never auto-run the full suite. Cost
+discipline (§14) demands surgical runs as the default.
+
+### Loop 1 — Triage a bad chat
+
+This is the most important workflow. It's how the harness grows organically
+from real usage.
+
+```dot
+digraph triage {
+    "you flag a turn" [shape=doublecircle];
+    "Claude pulls trace" [shape=box];
+    "Claude proposes read" [shape=box];
+    "you confirm what went wrong" [shape=diamond];
+    "match existing case?" [shape=diamond];
+    "Claude proposes update" [shape=box];
+    "Claude proposes new case" [shape=box];
+    "you approve" [shape=diamond];
+    "fix the agent" [shape=box];
+    "edit / create case YAML" [shape=box];
+    "run only that case" [shape=box];
+    "case passes" [shape=diamond];
+    "done" [shape=doublecircle];
+
+    "you flag a turn" -> "Claude pulls trace";
+    "Claude pulls trace" -> "Claude proposes read";
+    "Claude proposes read" -> "you confirm what went wrong";
+    "you confirm what went wrong" -> "match existing case?";
+    "match existing case?" -> "Claude proposes update" [label="yes"];
+    "match existing case?" -> "Claude proposes new case" [label="no"];
+    "Claude proposes update" -> "you approve";
+    "Claude proposes new case" -> "you approve";
+    "you approve" -> "fix the agent" [label="yes"];
+    "you approve" -> "Claude proposes read" [label="no — revise"];
+    "fix the agent" -> "edit / create case YAML";
+    "edit / create case YAML" -> "run only that case";
+    "run only that case" -> "case passes";
+    "case passes" -> "done" [label="yes"];
+    "case passes" -> "fix the agent" [label="no — iterate"];
+}
+```
+
+#### Step-by-step
+
+1. **You flag it.** Either paste a LangSmith URL, paste a chat snippet, or
+   describe the failure ("the agent said X was on the 76ers but he's been
+   on the Knicks since the trade").
+
+2. **Claude pulls the trace.** Using `scripts/inspect_trace.py <trace_id>`
+   which reads via the LangSmith SDK (your `LANGSMITH_API_KEY` from `.env`).
+   The script prints: user message, every tool call + args + result, final
+   response, tokens, latency. Claude does NOT need you to copy/paste any of
+   this — autonomous access.
+
+3. **Claude proposes a read** of what went wrong. Be specific: "the agent
+   called `search_recent_news` 3 times when one would have sufficed" or
+   "the agent claimed Smith is on PHI when `find_player` returned NYK".
+
+4. **You confirm or correct.** If Claude's read is wrong (it sometimes
+   will be — traces don't always show intent), you set them straight.
+
+5. **Claude searches the case library.** Looks for a YAML whose intent
+   shape (domain × question_type × answer_shape) and `must_call_tools` /
+   `phrasings` match this scenario. Claude tells you:
+   - "Closest match: `top_free_agents` — but it doesn't cover the
+     positional-surplus case", OR
+   - "No existing case covers this — I'll create one"
+
+6. **You approve the path.** Claude never silently edits a case or makes
+   one up. Approval is explicit.
+
+7. **Fix the agent first, case second.** The case should encode "what
+   correct behavior looks like AFTER the fix", not "what the agent
+   currently does." So we fix the prompt/tool/etc. first, then write the
+   assertions that capture the corrected behavior.
+
+8. **Run only that case** to verify. `python scripts/run_evals.py --case
+   <id>`. Pennies, ~30 seconds.
+
+9. **If it passes, we're done.** If it doesn't, iterate on the fix or the
+   assertions. We do NOT touch the case to make it pass — the case is the
+   spec, the agent is the implementation.
+
+### Loop 2 — Full-suite sweep
+
+Triggered on your explicit command. Examples:
+- "run the full suite" — before a meaningful merge
+- "are we still green" — health check after several small changes
+- Nightly cron later (Phase 8 of cost policy §14)
+
+Cost: $0.30–$1 per sweep today, scaling to ~$15 at the mature suite. See §14.
+
+### What Claude does autonomously vs with your approval
+
+| Action | Autonomous? |
+|--------|-------------|
+| Pull a LangSmith trace + summarize | ✅ |
+| Search YAML library for matching cases | ✅ |
+| Propose a case update or new case | ✅ |
+| **Edit or create a case YAML** | ❌ — needs your approval |
+| **Edit the agent prompt / tools** | ❌ — needs your approval |
+| Run a single case for verification | ✅ |
+| Run the full suite | ❌ — your command |
+| Persist results to Postgres | ✅ |
+| Add an entry to BACKLOG.md | ✅ |
+
+### Why this works
+
+The harness is most valuable when **the gap between "user flagged a bug" and
+"that bug is permanently locked in as a regression test" closes from days to
+minutes.** This loop is what closes that gap.
+
+Real example from this build (2026-05-12): the harness caught the agent
+firing `search_recent_news` 3 times for one FA list question. We fixed the
+prompt (Phase 8.8), tightened the case's `max_tool_calls` budget from 4 to 3,
+expanded the vocabulary list, and added the failure pattern to BACKLOG.md as
+the seed for the future injury_status pipeline. From flag to locked-in fix:
+~20 minutes in-conversation.
+
+### Things to never do in this loop
+
+- **Never tune the case to match a buggy agent.** The case is the spec.
+- **Never run the full suite "to be safe" without explicit ask.** Cost.
+- **Never silently delete a failing case.** Failures are signal.
+- **Never edit a generated case in `cases/generated/`.** If a generated case
+  is wrong, fix the topic contract (§13) and regenerate.
+
+---
+
+## 16. Dashboard + admin gating
+
+The eval harness produces queryable data. The dashboard turns that into a
+single page you can glance at — and trigger runs from — without dropping
+into psql or the CLI.
+
+### Where it lives
+
+**Same Next.js frontend as the chat app**, on a new `/eval` route. Same
+auth, same deployment. Hidden from non-admin users entirely.
+
+This is the right call because:
+- One codebase, one deploy pipeline
+- The auth (JWT in HTTP-only cookies) already works — we just check who's
+  asking before serving the route
+- When friends use the app, the eval surface is invisible to them — the
+  route 404s, the API returns 403, the sidebar tab doesn't render
+- Adding a new admin later = one line in an env var
+
+### Admin model
+
+**Cheapest path: an `ADMIN_EMAILS` env var.**
+
+```env
+ADMIN_EMAILS=itamarsaacks1@gmail.com
+```
+
+Comma-separated emails. The backend's `get_current_user` dependency
+exposes a derived `is_admin: bool` based on whether the requesting user's
+Yahoo OAuth email is in this list.
+
+Admin-gated routes:
+- All `/api/admin/*` endpoints (already planned for the `/leagues/debug-sync`
+  hardening per CLAUDE.md)
+- All `/api/evals/*` endpoints (this section)
+
+Non-admins hitting these routes get a 403 with `{detail: "admin only"}`.
+
+When you grow past "just me" — e.g. you find a co-builder — you add their
+email to the env var. No DB migration, no UI changes. Later, if you want
+formal user roles + a UI for managing them, we promote to an `is_admin`
+column on `users` and migrate. Not needed today.
+
+### What the dashboard shows
+
+Six views, in priority order. Each maps to a known-useful query against
+`eval_runs` / `eval_case_results`.
+
+1. **Headline health** (top of page)
+   - Last run: pass rate as a big number + 🟢/🟡/🔴/💥 verdict counts
+   - Trend sparkline: pass rate over the last 20 runs
+   - Last-run cost + duration
+
+2. **Recent runs** (table)
+   - id, started_at, total/pass/soft/fail/errored counts, duration, cost,
+     branch, notes — sortable, last 50 rows
+   - Click a row → drill into per-phrasing results for that run
+
+3. **Case library** (table)
+   - One row per YAML in `cases/manual` + `cases/generated`
+   - Columns: case_id, intent dimensions, tags, last-run verdict, last-run
+     latency, "trigger" button
+   - Filter by domain / question_type / complexity / tag
+   - Click → see the YAML rendered + last 10 runs of that case
+
+4. **Trigger a run** (the action surface)
+   - Multi-select cases from the library
+   - "Run selected" button → fires `POST /api/evals/run`
+   - Status polled every 2s until the background job writes the result row
+   - Result table updates in place; row click drills in
+
+5. **Slices** (charts, kept simple)
+   - Pass rate by `intent_domain` — bar chart
+   - Pass rate by `intent_complexity` — bar chart
+   - Pass rate by `intent_question_type` — bar chart
+   - Cost trend — line chart, last 30 runs
+
+6. **Failure clusters** (table)
+   - Top assertions by failure count + severity
+   - Click → see all failing cases for that assertion
+
+Deliberately **not** in v1:
+- LLM-as-judge scoring (cost + flakiness)
+- Per-tag dashboards beyond the slice charts
+- Comparative dashboards across LangSmith projects
+- Anything fancier than the above. Keep the surface tight.
+
+### Backend API (new routes, all admin-gated)
+
+```
+GET  /api/admin/evals/cases               # case library, joined with last verdict
+GET  /api/admin/evals/runs?limit=50       # recent runs
+GET  /api/admin/evals/runs/{id}           # one run + all its case results
+GET  /api/admin/evals/cases/{id}/history  # last 10 runs of one case
+POST /api/admin/evals/run                 # body: {case_ids: [...]}, kicks off job
+GET  /api/admin/evals/jobs/{job_id}       # status / progress of a triggered run
+GET  /api/admin/evals/slices/{dim}        # data for the chart views
+```
+
+The trigger endpoint kicks off the runner in a background task — APScheduler
+or a simple `asyncio.create_task` would work. The job writes to `eval_runs`
+as usual. The dashboard polls `/jobs/{id}` until done.
+
+### What friends see when the app is public
+
+| Surface | You (admin) | Friend |
+|---------|-------------|--------|
+| Chat tab | ✅ | ✅ |
+| Their own roster, league, etc. | ✅ (yours) | ✅ (theirs) |
+| Sidebar "Evals" tab | ✅ | (not rendered) |
+| `/eval` page | ✅ | 404 |
+| Trigger a run | ✅ | (button absent) |
+| `/api/admin/evals/*` | 200 | 403 |
+| LangSmith UI | ✅ (your account) | ❌ |
+
+Friends just see a chat app. The eval data flows in passively from their
+usage — their conversations show up in the LangSmith `fantasy-copilot-v2`
+project, and when you spot something interesting you flag it to Claude
+(Loop 1 in §15).
+
+### What's NOT in the dashboard plan
+
+- **User feedback button** (👍/👎 on each agent response). Real users
+  giving real signal is valuable, but it's a separate feature targeted at
+  the chat UI for everyone, not the eval surface for admins. Tracked in
+  `docs/BACKLOG.md`.
+- **Triggering runs against snapshots.** We don't have snapshots (§4). If
+  we ever bring them back, this becomes "pick a snapshot + cases".
+- **Editing cases from the UI.** Cases are version-controlled YAML — they
+  should be edited via PR, not via a dashboard. Approving changes through
+  git review is part of the workflow safety.
+
+### Phasing
+
+The dashboard slots in as Phase E5 (replacing the old "dashboard" placeholder
+in §9). E4 below it becomes "broaden case coverage" — Claude generates more
+cases by hand, you and Claude co-improve them as bugs surface (per §15).
 
 ---
 

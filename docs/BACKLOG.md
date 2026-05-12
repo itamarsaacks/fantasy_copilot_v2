@@ -68,5 +68,42 @@ prompt + cases. Pick + price the provider beforehand.
 
 ---
 
+---
+
+## 2. User feedback buttons on agent responses (priority: MEDIUM, post-launch)
+
+**Surfaced:** Phase E2 dashboard design conversation on 2026-05-12 — agreed
+to punt out of the eval-harness scope and address as its own feature.
+
+**Problem:** When the app is shared with friends, we want a quick way for
+them to signal "this answer was good" / "this was bad" without writing
+a free-form bug report. That signal flows into our backlog for the §15
+triage loop.
+
+**Sketch:**
+
+- Add 👍 / 👎 buttons next to each agent message in the chat UI
+- Optional inline text box on 👎 ("what was wrong?")
+- New table `chat_feedback` keyed by `(thread_id, message_index)` with
+  `rating: thumb_up | thumb_down`, `comment: text | null`,
+  `user_id`, `created_at`
+- Admin-only `/api/admin/feedback` route surfaces recent 👎s with a link
+  to the LangSmith trace + the user comment
+- The eval dashboard's case library can show "open feedback" alongside
+  "last verdict" — so when a friend leaves a 👎, it shows up next to the
+  case that intent maps to
+
+**Why MEDIUM not HIGH:**
+
+- Most useful when there are real users (multiple friends actively using)
+- Until then, in-person / DM feedback is fine and probably higher signal
+- Adding the table + UI early is fine but the real value is post-launch
+
+**Eval cases:** none directly. This is a data-collection feature, not an
+agent-behavior feature. The flagged traces feed Loop 1 in EVAL_HARNESS §15
+where Claude pulls them and proposes case updates.
+
+---
+
 <!-- Add new items above this line. Move completed items to a "Done" section
 or delete them once the corresponding work is committed. -->
