@@ -93,7 +93,19 @@ to behavior (prompt selection, projection model). Older docs may say
 
 ## Where docs live
 - `docs/decisions/` — ADRs (architecture decision records)
+- `docs/EVAL_HARNESS.md` — design + operating manual for the eval harness (what it is, intent taxonomy, snapshot strategy, generated vs promoted cases, the `eval-author` skill, weekly digests). Read before touching `app/evals/`.
 - `HANDOFF.md` (added later) — original migration context
+
+## Eval harness (status: scaffolded, not yet runnable)
+- Code lives at `backend/app/evals/`. Cases at `app/evals/cases/{manual,promoted,generated}/`.
+- `schema.py` is the single source of truth for case shape — Pydantic-validated. Every case has a structured `intent` block (question_type / complexity / domain / answer_shape).
+- `loader.py` parses YAML → `EvalCase`. One starter case lives at `cases/manual/waiver_days_offseason.yaml`.
+- **Hybrid case sources** by design (see `docs/EVAL_HARNESS.md` §13):
+  - **Generated** (volume): an `eval-author` skill enumerates the topic taxonomy, queries the snapshot DB for ground truth, writes cases. Restricted to factual/deterministic questions.
+  - **Promoted** (depth): real chats turned into cases via the promoter. Used for opinion / recommendation / multi-turn cases where there's no DB-derivable ground truth.
+- **Self-reference mitigation**: case generation runs on Opus, agent under test stays on Sonnet.
+- **Monitoring floor**: weekly auto-digest in `app/evals/digests/`. Not zero monitoring — ~5 min/week.
+- Phased build: E0 (schema) ✅ → E1 (runner + first snapshot) → E2 (Postgres results + LangSmith) → E3 (promoter) → E3.5 (eval-author skill) → E4 (multi-snapshot) → E5 (dashboard).
 
 ## Parallel work
 Use the built-in `Agent(isolation: "worktree")` for any parallelizable work. Don't manually create branches.

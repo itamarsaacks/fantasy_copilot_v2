@@ -9,6 +9,49 @@ the durable record of what shipped; this file is the human-readable
 
 ---
 
+## 2026-05-10 — Eval harness design + foundation scaffolded
+
+**Done this session:**
+- Decided to build an eval harness next, before any new feature work — rationale: every phase shipped without it requires manual re-testing, and the season starts in October. Eval-first means October features ship on a tested foundation.
+- Wrote `docs/EVAL_HARNESS.md` — full design + operating manual (12 sections originally, +1 added later)
+- Read user-provided Medium article on intent detection. Concluded: classifier-in-front-of-LLM approach doesn't fit our tool-calling architecture, but stole 3 useful ideas — structured intent taxonomy, explicit clarification-needed cases, per-intent metric slicing. Folded into the doc.
+- Designed and added §13 (Automated case generation) — hybrid model: generated cases (deterministic GT, ~70% of surface) + promoted cases (opinionated GT, real-chat origin). Generator restricted to questions answerable from snapshot DB. Self-reference mitigation: Opus generates, Sonnet runs.
+- Decided weekly digest is the monitoring floor (~5 min/week, not zero). Auto-written to `app/evals/digests/`.
+- Added `langsmith_trace_id`, `langsmith_thread_id`, `agent_thread_id` to result schema (§7).
+- Scaffolded `backend/app/evals/` — schema.py (Pydantic, single source of truth for case shape), loader.py, README.md, dir tree (cases/{manual,promoted,generated}, snapshots, probes, runner, digests).
+- Wrote first manual case: `cases/manual/waiver_days_offseason.yaml` with 4 phrasings. Validates clean through the loader. Negative tests (clarif intent without clarif assertion, both message fields set) reject as expected.
+- Updated `.claude/CLAUDE.md` — added pointer to `docs/EVAL_HARNESS.md` and a new "Eval harness" section recapping current status + hybrid model + self-reference mitigation + monitoring floor + phase progress (E0 ✅).
+
+**Next session should consider (priority order):**
+1. **Phase E1 — runner + first snapshot.** Snapshot capture script (dump Postgres tables + record Yahoo responses for one league at frozen `AS_OF_DATE`). Runner skeleton that loads a snapshot, instantiates the agent, runs each phrasing, evaluates assertions, prints pass/fail to console. Capture `offseason_2026_05` snapshot. Requires Docker + backend running.
+2. Phase E2 — Postgres `eval_runs` + `eval_case_results` tables, persistence, LangSmith trace/thread ID capture
+3. Phase E3 — promoter (LangSmith trace → case YAML, interactive)
+4. Phase E3.5 — `eval-author` skill + first probe (`league_rules`) + first 30 generated cases. **This is the unlock — after this, no more manual case authoring for factual topics.**
+
+**In flight / uncommitted:**
+- `.claude/CLAUDE.md` — modified (eval harness section added)
+- `docs/EVAL_HARNESS.md` — new file (~750 lines, the design doc)
+- `backend/app/evals/` — new directory tree with schema.py, loader.py, README.md, one starter case YAML
+- All safe to leave overnight. Suggest committing tomorrow morning before starting Phase E1, as one commit titled "Phase E0: eval harness foundation — design doc + schema + loader."
+- No smoke test run because no app code changed. Schema is validated locally via Python import.
+
+**Env state:**
+- Postgres: stopped (Docker down)
+- Backend uvicorn: stopped
+- Frontend: stopped
+- ngrok: stopped
+- Nothing weird with credentials or rotated secrets
+
+**Open questions / parked decisions:**
+- Whether snapshot capture should record Tavily news responses too, or stub web search out entirely during eval runs. Current plan in §4 says record them; might revisit when building.
+- Who triggers the daily/weekly cron run? Local cron, GitHub Action, or part of the backend's APScheduler? Defer until E2.
+- Whether to also generate cases for cross-league behavior (e.g. user has 2 leagues) — currently snapshots are per-league. Defer until we have a 2nd snapshot.
+
+**User mood at session end:**
+- Engaged, thinking ahead about long-term test strategy. Pushed back on "build it manually" idea and asked for an automated `eval-author` skill — wants the harness to scale without their attention. Receptive to honest tradeoff explanations (deterministic GT only, weekly digest as monitoring floor). Stopping for the night, will continue tomorrow.
+
+---
+
 ## 2026-05-09 — Phase 8 frontend complete + memory + continuity scaffolding
 
 **Done this session:**

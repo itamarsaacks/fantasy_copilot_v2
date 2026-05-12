@@ -1,0 +1,56 @@
+# Hand-written starter case. Validates the schema end-to-end.
+# When we ship the eval-author skill (Phase E3.5), this case becomes the
+# template for generated league_rules cases.
+
+id: waiver_days_offseason
+description: |
+  User asks about waiver days during off-season. Agent should call
+  get_league_rules and answer with the league's waiver type, not search
+  the web or hallucinate a generic answer.
+
+snapshots:
+  - offseason_2026_05
+
+intent:
+  question_type: definitional
+  complexity: simple
+  domain: rules
+  answer_shape: explanation
+
+phrasings:
+  - "what are my waiver days"
+  - "when do waivers process in my league"
+  - "tell me my waiver schedule"
+  - "how do waivers work here"
+
+repeat: 1
+
+expected:
+  must_call_tools:
+    - get_league_rules
+  must_not_call_tools:
+    - search_recent_news
+    - get_free_agents
+
+  response_contains_any:
+    - "continuous"
+    - "daily"
+    - "FAAB"
+
+  response_contains_none:
+    - "I don't have"
+    - "I'm not sure"
+    - "I cannot"
+
+  max_tool_calls: 3
+  max_latency_ms: 15000
+  max_cost_usd: 0.05
+
+tags:
+  - regression_8_7
+  - league_rules
+  - offseason
+
+provenance:
+  source: manual
+  source_chat_date: "2026-05-08"
