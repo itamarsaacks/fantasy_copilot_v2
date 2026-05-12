@@ -96,22 +96,20 @@ to behavior (prompt selection, projection model). Older docs may say
 - `docs/EVAL_HARNESS.md` — design + operating manual for the eval harness (what it is, intent taxonomy, snapshot strategy, generated vs promoted cases, the `eval-author` skill, weekly digests). Read before touching `app/evals/`.
 - `HANDOFF.md` (added later) — original migration context
 
-## Eval harness (status: E0 ✅, E1 in progress)
-- Code at `backend/app/evals/`. Cases at `app/evals/cases/{manual,promoted,generated}/`. Snapshots at `app/evals/snapshots/`. Topic contracts at `app/evals/probes/`.
+## Eval harness (status: E0 + E1 ✅ — 6 cases, 24/24 passing)
+- Code at `backend/app/evals/`. Cases at `app/evals/cases/{manual,promoted,generated}/`. Topic contracts at `app/evals/probes/` (Phase E4).
 - `schema.py` is the single source of truth for case shape — Pydantic-validated. Every case has a structured `intent` block (question_type / complexity / domain / answer_shape).
-- `loader.py` parses YAML → `EvalCase`. Starter case at `cases/manual/waiver_days_offseason.yaml`.
-- **Two run modes** (see `docs/EVAL_HARNESS.md` §4):
-  - `live` (default): runs against the actual local DB. Assertions restricted to **process** — tool routing, no-hallucination phrases, format, cost. Covers ~80% of cases.
-  - `snapshot`: runs against a restored frozen DB. Unlocks content-equality assertions (`response_contains_all`, `response_matches_regex`). Use for regression tests, numerical accuracy, date-sensitive logic. Schema rejects content-equality assertions in live mode.
+- `loader.py` parses YAML → `EvalCase`.
+- **Process eval only** (see `docs/EVAL_HARNESS.md` §4): the runner invokes the real agent against the live local DB and asserts on what the agent *did* (tools called, arguments, phrases to avoid, cost/latency budgets) — NOT on specific output content. The harness has no snapshot/frozen-state machinery; we decided against it because every bug class reduces to wrong-tool / wrong-args / hallucinated-synthesis, all catchable in live mode.
+- **The load-bearing trick**: `response_contains_none` is how we catch synthesis bugs. List specific never-OK phrases ("Dolphins", "category coverage", "I don't have"). When we discover a new failure mode, add it to the relevant case's `response_contains_none` — don't reach for frozen state.
+- **Severity tiers** (§6): each assertion is `critical` (default for behavioral checks) or `warning` (default for budgets). Verdicts: 🟢 PASS / 🟡 SOFT_PASS (criticals clean, warning drift) / 🔴 FAIL (any critical failed) / 💥 ERROR.
 - **Hybrid case sources** (§13):
-  - Generated (volume, Opus-authored via `eval-author` skill): default live mode, behavior assertions only via topic contracts in `app/evals/probes/`.
-  - Promoted (rare, from real LangSmith chats via promoter): live or snapshot as warranted.
-  - Manual regression (rare, human-authored): typically snapshot mode for locking in fixed bugs.
+  - Generated (volume, Opus-authored via `eval-author` skill): behavior-only assertions via topic contracts in `app/evals/probes/`.
+  - Promoted (rare, from real LangSmith chats via promoter).
 - **Self-reference mitigation**: generator uses Opus; agent under test uses Sonnet.
 - **Monitoring floor**: weekly auto-digest in `app/evals/digests/`. ~5 min/week.
 - **Cost policy** (§14): tiered runs — smoke subset on every commit (pennies), domain-filtered during dev, full suite nightly + on-demand pre-merge (~$10–15/day at maturity). Don't run full suite on every commit.
-- **Snapshot capture**: `scripts/eval_capture_snapshot.py --snapshot-id X --as-of-date YYYY-MM-DD`. First snapshot `offseason_2026_05` captured 2026-05-12 (15 tables, ~36k rows).
-- Phased build: E0 (schema + capture) ✅ → E1 (live-mode runner) ← here → E2 (Postgres results + LangSmith) → E3 (promoter) → E3.5 (eval-author skill) → E4 (snapshot-mode runner + multi-snapshot) → E5 (dashboard).
+- Phased build: E0 (schema) ✅ → E1 (live runner + severity + 6 cases) ✅ → E2 (Postgres results + LangSmith) → E3 (promoter) → E4 (eval-author skill) → E5 (dashboard).
 
 ## Parallel work
 Use the built-in `Agent(isolation: "worktree")` for any parallelizable work. Don't manually create branches.

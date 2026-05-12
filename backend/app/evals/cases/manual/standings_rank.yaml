@@ -4,7 +4,6 @@ description: |
   get_league_summary (which contains every team's standings) and reference
   position / rank. Process-only — the actual rank varies per league.
 
-mode: live
 
 intent:
   question_type: definitional

@@ -8,10 +8,6 @@ description: |
   not search the web, and reference the league's waiver mechanism in
   plain English. Process-only assertions — answer text varies by league.
 
-# Live mode: runs against the actual local DB. Assertions are behavior-only
-# (tool routing + topic vocabulary + hallucination guards). No snapshot
-# required because we don't assert specific answer content.
-mode: live
 
 intent:
   question_type: definitional

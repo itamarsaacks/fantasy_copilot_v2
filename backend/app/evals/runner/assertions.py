@@ -11,8 +11,6 @@ module assumes the schema already validated those constraints.
 
 from __future__ import annotations
 
-import re
-
 from app.evals.runner.result import AssertionFailure, ToolCallTrace
 from app.evals.schema import Expected, Severity, assertion_severity
 
@@ -131,19 +129,6 @@ def check_all(
                 )
             )
 
-    if expected.response_contains_all:
-        missing = [s for s in expected.response_contains_all if s.lower() not in response_lower]
-        if missing:
-            failures.append(
-                AssertionFailure(
-                    assertion="response_contains_all",
-                    severity=sev("response_contains_all"),
-                    expected=expected.response_contains_all,
-                    actual=final_response[:200],
-                    detail=f"missing phrase(s): {missing}",
-                )
-            )
-
     if expected.response_contains_none:
         present = [s for s in expected.response_contains_none if s.lower() in response_lower]
         if present:
@@ -154,18 +139,6 @@ def check_all(
                     expected=f"none of {expected.response_contains_none}",
                     actual=final_response[:200],
                     detail=f"forbidden phrase(s) appeared: {present}",
-                )
-            )
-
-    if expected.response_matches_regex:
-        if not re.search(expected.response_matches_regex, final_response):
-            failures.append(
-                AssertionFailure(
-                    assertion="response_matches_regex",
-                    severity=sev("response_matches_regex"),
-                    expected=expected.response_matches_regex,
-                    actual=final_response[:200],
-                    detail="regex did not match",
                 )
             )
 

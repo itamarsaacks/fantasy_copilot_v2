@@ -4,7 +4,6 @@ description: |
   (which projects settings_json.trade_end_date). Should NOT search the web —
   this is in the DB. Process-only.
 
-mode: live
 
 intent:
   question_type: definitional

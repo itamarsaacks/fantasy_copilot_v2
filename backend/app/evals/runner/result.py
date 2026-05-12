@@ -106,9 +106,6 @@ class CaseResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     case_id: str
-    mode: str
-    snapshot_id: str | None = None
-
     runs: list[PhrasingRun] = Field(default_factory=list)
 
     @property

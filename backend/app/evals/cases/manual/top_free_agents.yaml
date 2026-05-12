@@ -5,7 +5,6 @@ description: |
   (basic ownership-ranked). Process-only — the actual recommendations vary
   per league.
 
-mode: live
 
 intent:
   question_type: recommendation

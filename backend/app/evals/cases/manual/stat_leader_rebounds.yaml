@@ -4,7 +4,6 @@ description: |
   get_top_by_stat with stat=REB (the column name) and report a list.
   Process-only — actual leaders shift with each sync.
 
-mode: live
 
 intent:
   question_type: comparative

@@ -59,10 +59,3 @@ build/
 
 # Claude Code internal worktrees — never commit
 .claude/worktrees/
-
-# Eval snapshots contain real user data dumped from the local DB.
-# Don't commit them. Each dev captures their own via
-# `python scripts/eval_capture_snapshot.py --snapshot-id X --as-of-date Y`.
-# The snapshots/ dir itself + its README stay tracked; the data files don't.
-backend/app/evals/snapshots/*/
-!backend/app/evals/snapshots/README.md

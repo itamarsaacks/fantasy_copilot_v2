@@ -10,28 +10,41 @@ app/evals/
 ├── schema.py          Pydantic models — single source of truth for case shape
 ├── loader.py          load_case(path), discover_cases(root)
 ├── cases/
-│   ├── manual/        Hand-written cases (Itamar or Claude during a session)
+│   ├── manual/        Hand-written cases
 │   ├── promoted/      Real chats turned into cases (via promoter, Phase E3)
-│   └── generated/     Output of eval-author skill (Phase E3.5)
+│   └── generated/     Output of eval-author skill (Phase E4)
 │       └── {topic}/   One subdir per topic (waivers, trades, etc.)
-├── snapshots/         Frozen league states for replay (one subdir per snapshot)
-├── probes/            Ground-truth probes per topic (Phase E3.5)
-├── runner/            Runs cases against snapshots, checks assertions
+├── probes/            Topic contracts for the generator (Phase E4)
+├── runner/            Discovers cases, invokes the agent, checks assertions
 └── digests/           Auto-generated weekly markdown digests
 ```
 
 ## Status
 
-- ✅ Phase E0: schema + loader + first manual case validate end-to-end
-- ⬜ Phase E1: snapshot capture + runner skeleton
-- ⬜ Phase E2: Postgres tables + LangSmith integration
-- ⬜ Phase E3: promoter (real chat → case)
-- ⬜ Phase E3.5: eval-author skill + first probe
-- ⬜ Phase E4: multi-snapshot
+- ✅ Phase E0: schema + loader + first manual case
+- ✅ Phase E1: live runner + severity tiers + 6 cases passing 24/24
+- ⬜ Phase E2: Postgres `eval_runs` + `eval_case_results` tables + LangSmith
+- ⬜ Phase E3: promoter (real chat → case YAML)
+- ⬜ Phase E4: `eval-author` skill + first topic contract
 - ⬜ Phase E5: dashboard
 
-## Adding a case by hand right now
+## Running the harness
 
-1. Drop a YAML in `cases/manual/{name}.yaml` matching `schema.EvalCase`
-2. Validate: `python -c "from pathlib import Path; from app.evals.loader import discover_cases; print(discover_cases(Path('app/evals/cases')))"`
-3. Once Phase E1 lands: `./scripts/eval.sh --case {name}`
+```bash
+# All cases
+python scripts/run_evals.py
+
+# Filter by intent.domain
+python scripts/run_evals.py --domain waivers
+
+# One case
+python scripts/run_evals.py --case waiver_days_offseason
+
+# Validate cases without invoking the agent (no API cost)
+python scripts/run_evals.py --dry-run
+```
+
+## Adding a case by hand
+
+Drop a YAML in `cases/manual/{name}.yaml` matching `schema.EvalCase`, then
+run `python scripts/run_evals.py --case {name}` to validate.

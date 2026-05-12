@@ -38,9 +38,8 @@ It's also the only way to run **real-season testing** safely. When November come
 | Term | Meaning |
 |------|---------|
 | **Trace** | One full run of the agent: input message → tool calls → final response → tokens/latency/cost. Already stored in LangSmith. |
-| **Case** | One automated test: a user message + expected agent behavior + the snapshot it runs against. Lives in our repo as YAML. |
-| **Snapshot** | A frozen point-in-time copy of league state (DB rows + recorded Yahoo API responses + a fixed date). Lets us replay "what if we asked this on Nov 15?" |
-| **Replay** | Running the real agent against a snapshot. The agent's prompts and tools are real; only the data is frozen. |
+| **Case** | One automated test: a user message + expected agent behavior. Lives in our repo as YAML. |
+| **Process eval** | Asserting on what the agent *did* (tools called, arguments, phrases avoided), not what it *said* (specific answer text). The harness is process-only. |
 | **Assertion** | A check we make on the agent's output — e.g. "must call tool X", "response must mention 'continuous waivers'", "must not exceed 5 tool calls." |
 | **Intent eval** | A specific assertion type: did the agent correctly understand what the user was asking? Usually checked by which tool it routed to. |
 | **Run** | One full execution of all (or a subset of) cases at a moment in time. Produces a result row per case. |
@@ -70,80 +69,74 @@ LangSmith also has its own evaluation primitives (Datasets + Experiments + score
 
 ---
 
-## 4. Run modes — live vs snapshot
+## 4. How cases run — process eval, not content eval
 
-This is the most important design decision in the harness. Get it wrong and
-either tests are flaky (live state shifting under them) or the system is
-bloated (snapshots forced on cases that don't need them).
+The harness has one execution mode: **run the real agent against the live
+local DB, capture what the agent did, assert on the process.**
 
-### Two modes
+There are no snapshots, no frozen state, no separate eval database. The
+agent runs the same way it does in production. The eval validates **agent
+behavior** — which tools it called, with what arguments, whether it
+hallucinated forbidden phrases, whether it stayed within cost/latency budgets.
+It does **not** validate the specific text of the agent's answer.
 
-| Mode | What the agent runs against | Allowed assertions | When to use |
-|------|----------------------------|---------------------|-------------|
-| **`live`** (default) | The actual local Postgres in whatever state it's in | Process only: tool routing, no-hallucination phrases, format, cost, length | Most cases. The case is testing **agent behavior**, not a specific factual answer. |
-| **`snapshot`** | A restored point-in-time DB dump, `AS_OF_DATE` pinned | Process **plus** content-equality (specific numbers, names, rank) | Minority of cases. The case is testing a **specific factual outcome** that requires frozen state. |
+### Why process, not content
 
-### Why this matters
+Every fantasy-copilot bug we've found or imagined reduces to one of four
+shapes — and all four are testable without freezing state:
 
-Most fantasy-copilot questions test behavior, not facts. Examples:
+| Bug shape | How live mode catches it |
+|-----------|--------------------------|
+| Wrong tool called | `must_call_tools` / `must_not_call_tools` |
+| Right tool, wrong arguments | `tool_call_args_contain` |
+| Right calls, hallucinated synthesis | `response_contains_none` with specific never-OK phrases (e.g. "Dolphins" for the Bam Adebayo/Heat case) |
+| Cost/latency drift | budget assertions (`max_tool_calls`, `max_latency_ms`, `max_cost_usd`) |
 
-- "What are my waiver days?" — agent should call `get_league_rules`, not search the web. Whether the answer is "continuous" or "Tue/Fri" depends on the league. We assert on the **call**, not the answer.
-- "Who should I pick up?" — agent should call `get_free_agents` + `get_player_projection`, shouldn't recommend a player not in the FA pool. The specific player it picks is judgment.
-- "Compare A and B" — agent should call `compare_players`. The verdict text changes; the tool call is constant.
+Asserting "the answer should be 41.7 fps" or "the user's rank is #2" is **not
+the agent's job** — those values come from tools and the projection engine,
+whose correctness is tested at the tool layer. The agent test verifies that
+the agent **followed the right process** to produce the answer.
 
-For all of those, the live DB is fine. We assert on what the agent **does**, not on what it **says**.
+### When the agent runs
 
-Snapshots only matter when the assertion needs frozen ground truth:
+1. Runner discovers cases from `app/evals/cases/`
+2. For each phrasing × repeat:
+   - Generate a fresh thread_id so conversation memory doesn't leak
+   - Build a config with the test user + league
+   - Invoke `agent.ainvoke(...)` against the real DB
+   - Capture every tool call (name + args + output preview) and the final response
+3. Evaluate assertions on the captured trace
+4. Report verdict per phrasing
 
-- **Regression tests** — "with this exact DB state, the agent should say X". Locks in a previously-fixed bug.
-- **Numerical accuracy** — "if the snapshot has Embiid at 38.2 fps, the projection tool must return 38.2."
-- **Date-sensitive logic** — "tonight's slate" depends on a frozen date.
+The agent doesn't know it's in a test. Tools, prompts, LLM, projection cache —
+everything is real.
 
-These are ~10-20% of cases at maturity. Not the default.
+### The load-bearing trick: `response_contains_none`
 
-### Snapshot mechanics (when we do use them)
+Because we don't assert specific content, all synthesis-level bugs ("agent said
+the wrong thing") get caught via hallucination guards: phrases that should
+**never** appear in a correct response. Examples:
 
-```
-snapshots/
-  offseason_2026_05/
-    metadata.yaml      snapshot_id, captured_at, as_of_date, test_user_email,
-                       test_league_id, row counts, free-form note
-    schema.sql         pg_dump --schema-only (creates tables)
-    db.sql             pg_dump --data-only (populates tables)
-```
+- "Dolphins", "Cowboys", "Yankees" — NFL/MLB team names appearing in NBA context
+- "I don't have", "I cannot access" — refusal patterns when the tool returned data
+- "category coverage" — strategic framing wrong for points leagues
 
-When a `mode: snapshot` case runs:
+When we discover a new failure mode, the fix in eval terms is almost always
+"add the offending phrase to the case's `response_contains_none` list." This
+keeps the harness honest without reaching for frozen state.
 
-1. Runner drops + recreates a separate Postgres database (`fantasy_copilot_eval`)
-2. Restores `schema.sql`, then `db.sql`, into the eval DB
-3. Sets `DATABASE_URL` to the eval DB + `APP_MODE=replay` + `AS_OF_DATE` from metadata
-4. Imports + invokes the real agent (tools, prompts, LLM are all unchanged)
-5. Captures tool calls + final response
-6. Evaluates assertions
-7. Tears down the eval DB
+### Why we don't use snapshots
 
-The agent doesn't know it's in a test. **Only the data is frozen.**
+We considered a `mode: snapshot` system (restore a frozen DB dump, pin
+`AS_OF_DATE`, allow content-equality assertions) and decided against it. The
+argument that retired the idea: every bug class we could imagine either
+catches in live mode via the four shapes above, or it's a tool/engine bug
+rather than an agent bug. Snapshots would have added significant machinery
+(separate eval DB, capture script, restore plumbing, `EVAL_DATABASE_URL`
+routing) to serve cases that don't actually exist.
 
-### How we build snapshots
-
-A capture script (`scripts/eval_capture_snapshot.py`) dumps the live local DB:
-schema + all application tables, minus the LangGraph checkpointer tables
-(conversation memory shouldn't leak into eval runs). Output goes to
-`backend/app/evals/snapshots/{snapshot_id}/`.
-
-### Snapshot library plan
-
-We capture snapshots **only when we need to lock in regression state**, not as
-a rolling backup. So far:
-
-| Snapshot | Purpose | Captured |
-|----------|---------|----------|
-| `offseason_2026_05` | Baseline off-season behavior. Seed for future regression cases. | ✅ 2026-05-12 |
-| (future) `preseason_2026_10` | Right after draft. Captured when first numerical-accuracy case lands. | When needed |
-| (future) `midseason_2027_01` | Trade deadline. Captured when first season-time bug needs locking in. | When needed |
-
-We don't capture quarterly snapshots speculatively. Each snapshot exists
-because at least one case requires it.
+If we ever discover a genuine need for frozen state later, the design is
+captured in the git history at commit `ba9c7a6`. For now, all cases run live.
 
 ---
 
@@ -162,11 +155,9 @@ because at least one case requires it.
 │  ├── cases/                  YAML eval cases (source of    │
 │  │   ├── waiver_days.yaml    truth, version-controlled)    │
 │  │   └── ...                                               │
-│  ├── snapshots/              Frozen league states          │
-│  │   ├── offseason_2026_05/                                │
-│  │   └── ...                                               │
-│  ├── runner/                 Python: load snapshot, run    │
-│  │                           agent, check assertions       │
+│  ├── probes/                 Topic contracts (E4)          │
+│  ├── runner/                 Python: invoke agent, check   │
+│  │                           assertions, print verdicts    │
 │  ├── promoter/               Python: trace → case YAML     │
 │  └── reporters/              Console, JSON, Postgres       │
 └────────────────────────────────────────────────────────────┘
@@ -183,7 +174,7 @@ because at least one case requires it.
 │  - Pass rate over time                                     │
 │  - Cost / latency per case                                 │
 │  - Failure clustering                                      │
-│  - Per-snapshot health                                     │
+│  - Pass rate by intent dimension                           │
 └────────────────────────────────────────────────────────────┘
 ```
 
@@ -201,10 +192,6 @@ description: |
   User asks what their waiver days are. Agent should call get_league_rules,
   not search the web, and reference the league's waiver mechanism in plain
   English. Process-only assertions — the specific answer text varies by league.
-
-# Run mode. Default is `live` (runs against the actual local DB).
-# Use `snapshot` only when assertions need frozen ground truth.
-mode: live
 
 # What the user types — either `user_message` (single) or `phrasings` (many)
 phrasings:
@@ -263,35 +250,6 @@ provenance:
   source_chat_date: 2026-05-08
 ```
 
-### Snapshot-mode variant
-
-When a case needs frozen state (regression test, numerical accuracy, date-sensitive logic), declare the snapshot and unlock content-equality assertions:
-
-```yaml
-id: rank_after_week_5_freeze
-description: |
-  Regression: user reported the agent misreporting standings rank
-  on 2026-11-15. Locks in the correct answer against that snapshot.
-
-mode: snapshot
-snapshot_id: midseason_2026_11_15
-
-user_message: "what's my rank in the league"
-intent:
-  question_type: definitional
-  complexity: simple
-  domain: standings
-  answer_shape: number
-
-expected:
-  must_call_tools: [get_league_summary]
-  # Content-equality assertions — only legal in snapshot mode
-  response_contains_all:
-    - "rank"
-    - "2"     # frozen ground truth: user is #2 in this snapshot
-  response_contains_none: ["#3", "#4", "#5"]
-```
-
 ### Intent taxonomy reference
 
 The structured `intent` block is required on every case. Values:
@@ -338,36 +296,35 @@ Without these tests, the agent is free to silently guess at ambiguous queries an
 
 ### Assertion vocabulary (v1)
 
-Assertions split into two classes based on what they check:
+All assertions check **process**, not content. Two principles:
 
-- **Process assertions** — legal in both `live` and `snapshot` modes. They check what the agent *did*, not specific content.
-- **Content-equality assertions** — legal in `snapshot` mode only. Asserting specific text against a live (changing) DB produces flaky cases. The runner rejects content-equality assertions on `live` cases at load time.
+- Assertions on what the agent **did** (tool routing + arguments + cost) — direct checks.
+- Assertions on what the agent **didn't say** (hallucination guards) — `response_contains_none` with specific never-OK phrases.
+- Loose-OR'd vocabulary checks (`response_contains_any` with multiple terms) are fine because they tolerate state shifts: as long as ONE of the expected terms appears, the case passes.
 
-| Assertion | Mode | Meaning |
-|-----------|------|---------|
-| `must_call_tools` | both | Every tool listed must appear at least once in the trace |
-| `must_not_call_tools` | both | None of these tools may appear |
-| `must_call_tools_in_order` | both | These tools must appear in this exact sequence |
-| `tool_call_args_contain` | both | Specific arguments must appear in a specific tool call |
-| `response_contains_any` | both | At least one of these strings appears (use loose-OR'd lists like `["continuous", "daily"]` — works fine on live data) |
-| `response_contains_none` | both | None of these strings appear (hallucination guards, e.g. `["Dolphins", "I don't have"]`) |
-| `response_contains_all` | **snapshot only** | All of these strings appear — content-equality, requires frozen ground truth |
-| `response_matches_regex` | **snapshot only** | Final response matches a regex — content-equality |
-| `must_ask_clarification` | both | Agent's response must be a clarifying question, not an answer attempt |
-| `clarification_must_mention_any` | both | If asking for clarification, at least one of these phrases must appear |
-| `max_tool_calls` | both | Total tool calls ≤ N |
-| `max_latency_ms` | both | End-to-end time ≤ N ms |
-| `max_cost_usd` | both | Total cost ≤ $X |
-| `min_response_chars` | both | Response is at least N chars (catches "ok" responses) |
-| `max_response_chars` | both | Response is at most N chars (catches over-explaining) |
+| Assertion | Meaning |
+|-----------|---------|
+| `must_call_tools` | Every tool listed must appear at least once in the trace |
+| `must_not_call_tools` | None of these tools may appear |
+| `must_call_tools_in_order` | These tools must appear in this exact sequence |
+| `tool_call_args_contain` | Specific arguments must appear in a specific tool call |
+| `response_contains_any` | At least one of these strings appears (use loose-OR'd lists like `["continuous", "daily"]` — survives data shifts) |
+| `response_contains_none` | None of these strings appear (the load-bearing hallucination guard: `["Dolphins", "I don't have", "category coverage"]`) |
+| `must_ask_clarification` | Agent's response must be a clarifying question, not an answer attempt |
+| `clarification_must_mention_any` | If asking for clarification, at least one of these phrases must appear |
+| `max_tool_calls` | Total tool calls ≤ N |
+| `max_latency_ms` | End-to-end time ≤ N ms |
+| `max_cost_usd` | Total cost ≤ $X |
+| `min_response_chars` | Response is at least N chars (catches "ok" responses) |
+| `max_response_chars` | Response is at most N chars (catches over-explaining) |
 
 We start with these. Add more only when we need them.
 
-### What we deliberately don't assert (yet)
+### What we deliberately don't assert
 
-- **Exact response text.** Too brittle even in snapshot mode.
+- **Specific response text** (e.g. `response_contains_all: ["#2"]`, regex). Brittle against shifting data. If you find yourself wanting this, the right move is almost always to convert it into a `response_contains_none` guard ("agent must NOT say X").
 - **"Is this a good answer?" via LLM judge.** Adds cost + flakiness. Only added when string matching genuinely isn't enough.
-- **Specific projection numbers in live mode.** Numbers drift as the projection cache updates. Pin them via snapshot mode if you need to.
+- **Specific projection numbers, ranks, FAAB balances, or counts.** These belong in tool-layer tests, not agent-layer tests.
 
 ---
 
@@ -401,8 +358,6 @@ This is the data the future dashboard reads. Designed once, written from day one
 | `id` | UUID | Primary key |
 | `run_id` | UUID | FK to `eval_runs` |
 | `case_id` | text | The case's YAML id (e.g. "waiver_days_offseason") |
-| `mode` | text | `live` or `snapshot` — copied from case YAML |
-| `snapshot_id` | text | Which snapshot was used (NULL for `live` cases) |
 | `passed` | bool | Pass/fail |
 | `errored` | bool | True if the case crashed |
 | `error_message` | text | Crash reason if errored |
@@ -437,7 +392,6 @@ This is the data the future dashboard reads. Designed once, written from day one
 - Latency p50/p95 per case
 - "New regressions" — cases that passed last run but failed this run
 - "Flaky cases" — cases that pass and fail intermittently
-- Per-snapshot health — does the agent do worse on midseason than offseason?
 - Failure clustering — which assertion fails most often across cases?
 
 ---
@@ -452,7 +406,6 @@ This is the data the future dashboard reads. Designed once, written from day one
 4. You run `python -m evals.promoter <trace_id>`.
 5. The promoter pulls the trace, asks 3-5 questions in CLI:
    - "Name this case?"
-   - "Which snapshot does this represent?" (defaults to most recent)
    - "Which tools were essential? (suggested: ...)"
    - "Any phrases the response must contain? (auto-extract suggestions)"
    - "Any phrases it must NOT contain?"
@@ -474,14 +427,14 @@ The harness grows organically from real usage.
 # Run one case
 ./scripts/eval.sh --case waiver_days_offseason
 
-# Run against a specific snapshot only
-./scripts/eval.sh --snapshot midseason_2027_01
+# Filter by intent.domain
+./scripts/eval.sh --domain waivers
 ```
 
 Output (console):
 
 ```
-Running 32 cases across 2 snapshots...
+Running 32 cases...
 
 ✅ waiver_days_offseason          (1.2s, $0.008)
 ✅ trade_deadline_midseason       (2.1s, $0.014)
@@ -511,21 +464,19 @@ Once stable, run on every commit. Block merges that drop pass rate below thresho
 - Pydantic schema (`app/evals/schema.py`)
 - YAML loader (`app/evals/loader.py`)
 - Directory tree + first manual case
-- Snapshot capture script + first snapshot `offseason_2026_05`
+- Directory tree: cases/{manual,promoted,generated}/, probes/, runner/, digests/
 
-### Phase E1 — Live-mode runner (1 session)
+### Phase E1 — Live runner ✅ (committed 2026-05-12, ba9c7a6 + 23a8ef0)
 
-- Runner that loads `mode: live` cases, invokes the real agent against the live local DB, captures tool calls + final response, evaluates assertions, prints pass/fail to console
-- Snapshot-mode path can be stubbed for now (raise NotImplementedError)
-- Run the starter case `waiver_days_offseason` end-to-end (4 phrasings)
-- Pass/fail to console only (no DB persistence yet)
-
-**Goal:** prove the loop works end-to-end against live data. This is the load-bearing phase — everything after E1 builds on a working runner.
+- Runner loads cases, invokes the real agent against the live local DB, captures tool calls + final response, evaluates assertions, prints pass/fail to console
+- Severity tiers (critical / warning) and Verdicts (🟢/🟡/🔴/💥)
+- Starter case + 5 more (roster, standings, trades, waivers, free agents, stat leaders)
+- **24 / 24 phrasings passing**
 
 ### Phase E2 — Postgres results + LangSmith integration (½ session)
 
 - `eval_runs` + `eval_case_results` tables + Alembic migration
-- Runner writes results to Postgres (including mode, snapshot_id where applicable)
+- Runner writes results to Postgres
 - Runner attaches LangSmith trace ID / URL / thread ID per result
 - LangSmith Dataset mirror (push cases as a LangSmith dataset)
 - Separate LangSmith project (`fantasy-copilot-evals`) so eval traces don't pollute prod
@@ -541,7 +492,7 @@ Once stable, run on every commit. Block merges that drop pass rate below thresho
 
 **Goal:** capturing new cases takes 2 minutes per chat instead of 20.
 
-### Phase E3.5 — `eval-author` skill (1-2 sessions) — **the "no-manual-authoring" unlock**
+### Phase E4 — `eval-author` skill (1-2 sessions) — **the "no-manual-authoring" unlock**
 
 - `app/evals/probes/` framework + first contract: `league_rules.py`
 - `eval-author` skill that enumerates → applies contract → phrases → dry-runs → saves
@@ -551,38 +502,25 @@ Once stable, run on every commit. Block merges that drop pass rate below thresho
 
 **Goal:** `/author-evals --topic X` produces a usable case batch end-to-end. After this, you stop authoring cases by hand for any topic. See §13 for full design.
 
-### Phase E4 — Snapshot-mode runner + multi-snapshot support (1 session, when first snapshot-mode case lands)
-
-- Runner implements snapshot restore (`fantasy_copilot_eval` DB, schema + data load)
-- `EVAL_DATABASE_URL` + `APP_MODE=replay` + `AS_OF_DATE` plumbing
-- Cases can declare multiple snapshots; runner expands one case → N runs
-
-**Goal:** the regression-test subset becomes runnable. Ready for season-time content-equality cases.
-
 ### Phase E5 — Dashboard (later, separate effort)
 
 - Frontend page that reads `eval_runs` + `eval_case_results`
 - Charts: pass rate over time, cost, latency, failure clusters
-- Filters: intent dimensions, tag, snapshot, case
+- Filters: intent dimensions, tag, case
 
 ---
 
 ## 10. What this catches vs doesn't (calibrate expectations)
 
-### Catches well (live mode — most of the suite)
+### Catches well
 
 - **Wrong tool routing** — via `must_call_tools` / `must_not_call_tools`
+- **Wrong tool arguments** — via `tool_call_args_contain`
 - **Hallucinated phrases** ("Adebayo plays for the Dolphins") — via `response_contains_none`
 - **Strategy framing regressions** ("category coverage" in a points league) — via `response_contains_none`
-- **Cost / latency regressions** — via budget assertions
+- **Cost / latency / over-tool-use regressions** — via budget assertions
 - **Tool-not-called-when-needed** — agent answering "what are my waiver days" from training data instead of calling the tool
 - **Ambiguous-query handling** — via `must_ask_clarification` (agent shouldn't guess)
-
-### Catches well (snapshot mode — the regression-test subset)
-
-- **Numerical accuracy** — projection numbers, standings rank, FAAB balance frozen against snapshot
-- **Date-sensitive logic** — "tonight's slate", "this week's matchup" pinned to a date
-- **Locked-in regressions** — bug reported on a specific day, snapshot captures that DB state forever
 
 ### Catches partially
 
@@ -594,14 +532,12 @@ Once stable, run on every commit. Block merges that drop pass rate below thresho
 - **Novel failures** — only catches regressions of behaviors we've encoded.
 - **Tone / personality** — needs LLM-as-judge, deferred until needed.
 - **End-to-end UI bugs** — this tests the agent, not the chat UI rendering.
-- **Drift in unasserted numbers** in live mode — if you care about a specific number staying constant, pin it via snapshot mode.
+- **Specific factual values** (rank, FPS, FAAB balance, schedule counts) — these belong in tool-layer tests. The agent layer only verifies the agent followed the right process to expose those values.
 
 ---
 
 ## 11. Open decisions (things we'll figure out as we build)
 
-- **Should snapshots include real player names or anonymized?** Real for now. We're not publishing snapshots — they're internal test fixtures.
-- **How often do we recapture snapshots?** Probably one per major season phase (preseason, early, mid, late, playoffs). Plus one ad-hoc snapshot any time we ship a feature that should be regression-tested at a specific moment.
 - **LangSmith Datasets vs our YAML — which is source of truth?** YAML in repo. LangSmith Dataset is a mirror, regenerated from YAML on each run.
 - **Run frequency?** Manual at first (after big changes). CI integration once it's stable and fast.
 - **LLM-as-judge scoring?** Deferred. Add only when a class of failure can't be checked with string matching.
@@ -614,9 +550,9 @@ Once stable, run on every commit. Block merges that drop pass rate below thresho
 
 ### Resolved (2026-05-12)
 
-- ~~Are snapshots required for every case?~~ → **No.** Default is `live` mode — runs against the actual local DB, asserts on process only (tool routing, no-hallucination, format, cost). `snapshot` mode is opt-in for cases that need frozen ground truth (regression tests, numerical accuracy, date-sensitive logic). Most cases — ~80% at maturity — are `live`. See §4.
-- ~~Are content-equality assertions (`response_contains_all`, `response_matches_regex`) always legal?~~ → **No.** Restricted to `snapshot` mode. Loader rejects them on `live` cases. Prevents flaky tests caused by asserting specific text against a live DB. See §6.
-- ~~Where does ground truth come from for generated cases?~~ → **For live-mode generated cases (the default), ground truth = expected behavior, not expected content.** Snapshot DB queries only apply to the small minority of cases that need content-equality.
+- ~~Do we need snapshots / frozen DB state?~~ → **No.** Every bug class we could imagine reduces to wrong-tool, wrong-args, or hallucinated synthesis — all catchable in live mode against shifting data. Snapshots would have added significant machinery (separate eval DB, capture script, `EVAL_DATABASE_URL` plumbing) for use cases that don't exist. The harness is **live-only**. See §4.
+- ~~Are content-equality assertions (`response_contains_all`, `response_matches_regex`) ever useful?~~ → **No.** Removed from the vocabulary entirely. The agent test verifies process, not specific content. Hallucination guards via `response_contains_none` handle synthesis-level bugs without needing frozen state.
+- ~~Where does ground truth come from for generated cases?~~ → **From the topic contract**, not from DB queries. Each topic hard-codes: which tool(s) the agent must call, what vocabulary the response should reference, what phrases must NEVER appear. See §13.
 
 ---
 
@@ -626,11 +562,11 @@ If you forget what a word means, search this file:
 
 - "Trace" → §2
 - "Case" → §2, §6
-- "Mode (live vs snapshot)" → §4, §6
-- "Process assertion vs content-equality" → §6
-- "Snapshot" → §2, §4
-- "Replay" → §2, §4
+- "Process eval" → §4
+- "Hallucination guard" (`response_contains_none`) → §4, §6
 - "Assertion" → §2, §6
+- "Verdict (PASS / SOFT_PASS / FAIL)" → §6
+- "Severity (critical / warning)" → §6
 - "Intent eval" → §2, §6
 - "Run" → §2, §7
 - "LangSmith Dataset" → §2, §3
@@ -646,19 +582,18 @@ This section describes the **wide / hands-off** path: an automated generator tha
 
 ### The hybrid model
 
-| Source | Volume | Default mode | What it tests | Authored by |
-|--------|--------|--------------|---------------|-------------|
-| **Generated** (this section) | high (100s) | `live` | Tool routing, hallucination guards, format, cost, behavior under paraphrase | Opus, via the skill |
-| **Promoted** (§8) | low (~1/week) | `live` or `snapshot` as the original chat warrants | Multi-turn flows, judgment-call behavior, recommendation framing | Human, from real LangSmith trace |
-| **Manual regression** | rare (as needed) | `snapshot` | Specific factual outcomes locked in against a frozen snapshot | Human, from a bug report or numerical regression |
+| Source | Volume | What it tests | Authored by |
+|--------|--------|---------------|-------------|
+| **Generated** (this section) | high (100s) | Tool routing, hallucination guards, format, cost, behavior under paraphrase | Opus, via the skill |
+| **Promoted** (§8) | low (~1/week) | Multi-turn flows, judgment-call behavior, recommendation framing — from real LangSmith traces worth locking in | Human, from a real chat |
 
-Generated covers most of the agent's behavior surface — every well-formed question gets covered. Promoted and manual regression fill the gaps where real-world judgment or frozen state matters.
+Generated covers most of the agent's behavior surface — every well-formed question gets covered. Promoted fills the gap where real-world judgment or multi-turn flow matters.
 
 ### The process-first principle
 
-The generator defaults to `live` mode with **behavior assertions**, not content assertions. It never asserts the agent's answer text against a specific value — that would require frozen state, which is what `snapshot` mode is for.
+The generator only writes **behavior assertions**, never content assertions. It never asserts the agent's answer text against a specific value — that's the wrong layer.
 
-What the generator can assert in live mode:
+What the generator can assert:
 
 - `must_call_tools` — derived from a topic-to-tool mapping (e.g. waivers → `get_league_rules`)
 - `must_not_call_tools` — sanity guards (e.g. don't call `search_recent_news` for a rules question)
@@ -667,28 +602,29 @@ What the generator can assert in live mode:
 - `must_ask_clarification` — for queries the generator marks as ambiguous on purpose
 - Cost / latency / length budgets
 
-What the generator **cannot** assert (would require snapshot mode + human curation):
+What the generator **cannot** assert (since the whole harness is process-only):
 
-- Specific numerical values
-- Specific player names
-- Exact text matches via `response_contains_all` or regex
+- Specific numerical values (ranks, FPS, FAAB balance, schedule counts)
+- Specific player names as a required answer
+- Exact text matches
 
-This keeps generated cases stable across DB updates while still catching the failures that matter most (wrong tool, hallucinated team, missing topic vocabulary).
+If a case calls for one of these, the right move is either:
+- Rephrase it as a hallucination guard (e.g. "agent must NOT recommend a rostered player" instead of "agent must recommend Player X")
+- Move the assertion down to the tool/engine layer, where it belongs
 
 ### What kinds of questions the generator covers
 
-| Question class | Generator coverage | Why |
-|----------------|---------------------|-----|
-| "What are my waiver days?" | ✅ live | Tool routing + topic vocabulary |
-| "When is the trade deadline?" | ✅ live | Tool routing + topic vocabulary |
-| "Who's on team Foo?" | ✅ live | Tool routing + must-not-hallucinate names |
-| "Top 5 in rebounds" | ✅ live | Tool routing + format (list/table) |
-| "Should I trade Embiid for Sabonis?" | ✅ live (behavior only) | Tool routing (`compare_players`) + must-not-hallucinate. **No verdict assertion.** |
-| "Who should I pick up?" | ✅ live (behavior only) | Tool routing (`get_free_agents` + `get_player_projection`) + must-not-recommend-rostered-player |
-| "Is X having a good season?" | ✅ live (behavior only) | Tool routing + must-cite-a-tool |
-| "What's my rank?" with a specific expected number | ❌ — escalates to **manual regression** with snapshot | Content-equality requires frozen state |
+| Question class | Coverage | Why |
+|----------------|----------|-----|
+| "What are my waiver days?" | ✅ | Tool routing + topic vocabulary |
+| "When is the trade deadline?" | ✅ | Tool routing + topic vocabulary |
+| "Who's on team Foo?" | ✅ | Tool routing + must-not-hallucinate names |
+| "Top 5 in rebounds" | ✅ | Tool routing + format (list/table) |
+| "Should I trade Embiid for Sabonis?" | ✅ (behavior only) | Tool routing (`compare_players`) + must-not-hallucinate. **No verdict assertion.** |
+| "Who should I pick up?" | ✅ (behavior only) | Tool routing (`get_free_agents` + `get_player_projection`) + must-not-recommend-rostered-player |
+| "Is X having a good season?" | ✅ (behavior only) | Tool routing + must-cite-a-tool |
 
-So the generator covers **all** common question types — it just asserts on the right things for each.
+The generator covers every common question type — it just asserts on the **right things** (process), not on outputs we can't reliably predict.
 
 ### Self-reference mitigation
 
@@ -703,23 +639,15 @@ To reduce blind-spot alignment between author and agent:
 Invocation:
 
 ```
-/author-evals --topic waivers --snapshot offseason_2026_05 --count 30
-```
-
-Invocation:
-
-```
 /author-evals --topic waivers --count 30
 ```
-
-(No `--snapshot` flag by default. Generated cases are `live` mode.)
 
 Pipeline per invocation:
 
 1. **Enumerate** — load the topic's contract module. Walk the (question_type × complexity × answer_shape) taxonomy filtered to what the contract declares supported. Each cell becomes one case slot.
 2. **Apply contract** — for each slot, copy the topic's hard-coded behavior assertions: `must_call_tools`, `must_not_call_tools`, vocabulary for `response_contains_any`, hallucination blacklist for `response_contains_none`, cost/latency budgets.
 3. **Phrase** — call Opus to generate 3-5 paraphrasings of the user message. Variations cover: terse vs verbose, jargon vs plain English, full sentences vs fragments. All phrasings share the same assertions.
-4. **Assemble** — write the case YAML with `mode: live`, structured `intent` block, `phrasings` list, the contract's assertions, `provenance.source: generated`.
+4. **Assemble** — write the case YAML with the structured `intent` block, `phrasings` list, the contract's assertions, `provenance.source: generated`.
 5. **Dry-run** — execute every phrasing against the live local DB. Capture pass/fail.
 6. **Verdict:**
    - All phrasings pass → save to `app/evals/cases/generated/{topic}/{case_id}.yaml`.
@@ -802,16 +730,7 @@ Reading the weekly digest is ~5 minutes. That's the floor of human involvement.
 
 ### Phasing (slots into §9)
 
-The original phased plan stays. Generator slots in at E3.5:
-
-- **E1** — minimal harness, hand-written cases (still the foundation)
-- **E2** — Postgres + LangSmith integration
-- **E3** — promoter (real chat → case)
-- **E3.5** — `eval-author` skill + first probe (`league_rules`) + first 30 generated cases. **This is the "I don't author cases" unlock.**
-- **E4** — multi-snapshot
-- **E5** — dashboard
-
-E3.5 cannot ship before E1+E2: the generator depends on the runner and the result schema.
+The generator is Phase E4 — depends on the runner (E1 ✅) and result schema (E2).
 
 ---
 
@@ -827,7 +746,7 @@ bill is uncomfortable. This section locks in the discipline.
 | LLM (Anthropic Sonnet for agent under test) | Dominant. ~$0.005–$0.025 per agent run, prompt-cache dependent |
 | LLM (Anthropic Opus for `eval-author` generation) | Paid only when generating cases, not when running |
 | LangSmith ingestion | Free at our volume |
-| Tavily (`search_recent_news`) | Real Tavily calls cost cents per query. **E1 avoids; E2+ stubs from snapshot fixtures.** |
+| Tavily (`search_recent_news`) | Real Tavily calls cost cents per query. Cases generally avoid it via `must_not_call_tools: [search_recent_news]`; when a news-status case genuinely needs it, accept the small per-call cost. |
 | Postgres + local compute | Free |
 
 **Prompt caching is the key lever.** The system prompt + tool definitions
@@ -841,8 +760,8 @@ Assumes prompt caching on, no Tavily calls, Sonnet pricing.
 
 | Stage | Cases | Avg phrasings × repeats | Runs | Cost / full suite |
 |-------|-------|------------------------|------|-------------------|
-| E1 launch | 1 | 4 × 1 | 4 | ~$0.02 |
-| After E3.5 (first generated batch) | ~30 | 3 × 1 | 90 | ~$0.50–$1 |
+| E1 launch ✅ | 6 | 4 × 1 | 24 | ~$0.30 (measured) |
+| After E4 (first generated batch) | ~30 | 3 × 1 | 90 | ~$0.50–$1 |
 | 3 months out | ~100 | 3 × 1 | 300 | ~$2–$3 |
 | Mature suite (6+ months) | ~300 | 3 × 1.5 | ~1,400 | ~$10–$15 |
 
@@ -865,7 +784,7 @@ not on every commit. Tier by risk and frequency.
 - **Repeat=1 by default.** Increase only on cases under flakiness investigation.
 - **Skip `generated/` cases on smoke tier**, run them only nightly. `promoted/` and `manual/` (curated, high-value) stay on smoke.
 - **Per-domain smoke selection**: keep 1–2 representative cases per intent.domain on the smoke tier; the rest only nightly.
-- **Pause snapshots that aren't currently relevant.** If only off-season behavior is shipping, don't burn tokens on midseason snapshots until you change something season-dependent.
+- **Skip generated cases that aren't currently exercised.** If a topic's feature isn't shipping yet, mark those cases inactive instead of running them on every cron.
 - **Stop running cases with `repeat>1`** when investigation completes — flakiness sweeps are scoped, not standing.
 
 ### What NOT to do (anti-patterns)
@@ -879,12 +798,12 @@ not on every commit. Tier by risk and frequency.
 - When `eval_runs` token spend in a month exceeds 5% of total Anthropic spend
 - When mature-suite cost projection exceeds $50/day
 - When the smoke tier grows past ~15 cases (it shouldn't; trim it)
-- When we add expensive-per-call tools (e.g. real-time NBA APIs) that bypass snapshot fixtures
+- When we add expensive-per-call tools (e.g. real-time NBA APIs) that bypass the standard tool cost profile
 
 ---
 
 ## How to keep this doc useful
 
-- Update §4 (snapshot library) every time we capture a new snapshot.
+- Update §11 (Resolved) every time a major open decision lands.
 - Update §6 (assertion vocabulary) every time we add an assertion type.
 - Don't delete the "deferred" or "open decisions" sections — they're reminders of things we chose NOT to do, which matters as much as what we did.

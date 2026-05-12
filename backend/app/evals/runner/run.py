@@ -1,9 +1,10 @@
 """Main entry point — discovers cases, runs them, prints results.
 
-Phase E1: live mode only. Snapshot mode raises NotImplementedError.
+Process-only eval: invokes the real agent against the live local DB and
+asserts on what the agent did, not on specific output content.
 
 Usage (via the wrapper script):
-  python scripts/run_evals.py                 # all live-mode cases
+  python scripts/run_evals.py                 # all cases
   python scripts/run_evals.py --case waiver_days_offseason
   python scripts/run_evals.py --domain rules
   python scripts/run_evals.py --dry-run       # validate cases only, don't invoke agent
@@ -26,7 +27,7 @@ from app.evals.runner.result import (
     Verdict,
     compute_verdict,
 )
-from app.evals.schema import EvalCase, Mode
+from app.evals.schema import EvalCase
 
 CASES_ROOT = Path(__file__).resolve().parent.parent / "cases"
 
@@ -35,7 +36,6 @@ def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--case", help="Run only the case with this id")
     p.add_argument("--domain", help="Run only cases with intent.domain matching")
-    p.add_argument("--mode", choices=["live", "snapshot"], help="Filter by run mode")
     p.add_argument("--dry-run", action="store_true", help="Load cases + validate but don't invoke agent")
     return p.parse_args()
 
@@ -49,8 +49,6 @@ def filter_cases(cases: list[EvalCase], args: argparse.Namespace) -> list[EvalCa
             sys.exit(2)
     if args.domain:
         out = [c for c in out if c.intent.domain.value == args.domain]
-    if args.mode:
-        out = [c for c in out if c.mode.value == args.mode]
     return out
 
 
@@ -90,15 +88,11 @@ async def run_case(
 
     from app.evals.runner.agent_invoker import invoke
 
-    cr = CaseResult(
-        case_id=case.id,
-        mode=case.mode.value,
-        snapshot_id=case.snapshot_id,
-    )
+    cr = CaseResult(case_id=case.id)
 
     messages = case.all_messages()
     total = len(messages) * case.repeat
-    print(f"  [{case.id}] mode={case.mode.value} runs={total}")
+    print(f"  [{case.id}] runs={total}")
 
     for phrasing_idx, phrasing in enumerate(messages):
         for repeat_idx in range(case.repeat):
@@ -195,25 +189,10 @@ async def amain() -> int:
         print("No cases match the filters. Nothing to run.")
         return 0
 
-    # E1 is live-mode only. Surface any snapshot cases explicitly.
-    snapshot_cases = [c for c in cases if c.mode == Mode.SNAPSHOT]
-    live_cases = [c for c in cases if c.mode == Mode.LIVE]
-    if snapshot_cases:
-        print(
-            f"NOTE: {len(snapshot_cases)} snapshot-mode case(s) skipped — "
-            f"snapshot runner not implemented yet (Phase E4)."
-        )
-        for c in snapshot_cases:
-            print(f"  - {c.id} (snapshot={c.snapshot_id})")
-
     if args.dry_run:
         print(f"\nDry run: loaded {len(cases)} case(s) successfully.")
         for c in cases:
-            print(f"  - {c.id} mode={c.mode.value} runs={c.total_run_count()}")
-        return 0
-
-    if not live_cases:
-        print("No live-mode cases to run.")
+            print(f"  - {c.id} runs={c.total_run_count()}")
         return 0
 
     print(f"Discovering test user/league from live DB...")
@@ -226,7 +205,7 @@ async def amain() -> int:
 
     summary = RunSummary(started_at=dt.datetime.now(dt.timezone.utc))
     try:
-        for case in live_cases:
+        for case in cases:
             cr = await run_case(case, user_id, league_id, scoring_type)
             summary.results.append(cr)
     finally:
