@@ -511,3 +511,99 @@ class Conversation(Base):
         onupdate=func.now(),
         nullable=False,
     )
+
+
+# ---------------------------------------------------------------------------
+# Eval harness (Phase E2) — see docs/EVAL_HARNESS.md §7
+# ---------------------------------------------------------------------------
+
+
+class EvalRun(Base):
+    """One harness invocation. Aggregates every PhrasingRun from that run."""
+
+    __tablename__ = "eval_runs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    started_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, index=True
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
+
+    git_sha: Mapped[str | None] = mapped_column(String, nullable=True)
+    git_branch: Mapped[str | None] = mapped_column(String, nullable=True)
+    triggered_by: Mapped[str] = mapped_column(
+        String, nullable=False, default="manual"
+    )
+    model: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    total_cases: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    total_phrasings: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    strict_passed: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    soft_passed: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    failed: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    errored: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    total_latency_ms: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    total_cost_usd: Mapped[float | None] = mapped_column(
+        Numeric(10, 4), nullable=True
+    )
+
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class EvalCaseResult(Base):
+    """One phrasing x one repeat = one row.
+
+    Intent dimensions are denormalized columns (not just tags) so the
+    dashboard can index/slice quickly. See docs/EVAL_HARNESS.md §7.
+    """
+
+    __tablename__ = "eval_case_results"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    run_id: Mapped[int] = mapped_column(
+        ForeignKey("eval_runs.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+
+    case_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    phrasing: Mapped[str] = mapped_column(Text, nullable=False)
+    repeat_index: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    verdict: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    errored: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    tool_calls: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSONB, nullable=False, default=list
+    )
+    final_response: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    failure_reasons: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSONB, nullable=False, default=list
+    )
+
+    latency_ms: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    tokens_in: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    tokens_out: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    cost_usd: Mapped[float | None] = mapped_column(Numeric(10, 6), nullable=True)
+
+    langsmith_trace_id: Mapped[str | None] = mapped_column(
+        String, nullable=True, index=True
+    )
+    langsmith_trace_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    langsmith_thread_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    agent_thread_id: Mapped[str | None] = mapped_column(
+        String, nullable=True, index=True
+    )
+
+    intent_question_type: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    intent_complexity: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    intent_domain: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    intent_answer_shape: Mapped[str] = mapped_column(String, nullable=False)
+
+    tags: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
+
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
+    )

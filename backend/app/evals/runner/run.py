@@ -37,6 +37,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--case", help="Run only the case with this id")
     p.add_argument("--domain", help="Run only cases with intent.domain matching")
     p.add_argument("--dry-run", action="store_true", help="Load cases + validate but don't invoke agent")
+    p.add_argument("--no-persist", action="store_true", help="Skip writing to eval_runs / eval_case_results tables")
+    p.add_argument("--notes", default=None, help="Free-form note recorded with the run (e.g. 'pre-merge check')")
     return p.parse_args()
 
 
@@ -213,6 +215,21 @@ async def amain() -> int:
 
     summary.finished_at = dt.datetime.now(dt.timezone.utc)
     print_summary(summary)
+
+    # Persist to Postgres unless explicitly disabled.
+    if not args.no_persist:
+        from app.agent.agent import MODEL
+        from app.evals.runner.persistence import persist_run
+
+        run_id = await persist_run(
+            summary,
+            cases,
+            model=MODEL,
+            triggered_by="manual",
+            notes=args.notes,
+        )
+        if run_id is not None:
+            print(f"\n  Persisted as eval_runs.id={run_id}")
 
     # Exit non-zero if anything failed/errored
     return 1 if (summary.failed or summary.errored) else 0

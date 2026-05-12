@@ -1,11 +1,12 @@
 """Invoke the real agent for one PhrasingRun, capture tool calls + response.
 
-Live mode (E1): uses the existing app.db.engine and the app's checkpointer.
-The runner is responsible for starting/stopping the checkpointer around the
-batch of invocations.
+Uses the existing app.db.engine and the app's checkpointer. The runner is
+responsible for starting/stopping the checkpointer around the batch of
+invocations. LangSmith traces are routed to the `fantasy-copilot-evals`
+project by env vars set in scripts/run_evals.py before any imports.
 
-Snapshot mode (E4): will override DATABASE_URL before importing app.* modules
-so the agent connects to the eval DB instead. Not implemented yet.
+We pre-generate the LangSmith run_id per invocation so we can record the
+trace URL deterministically in the result row.
 """
 
 from __future__ import annotations
@@ -14,6 +15,13 @@ import time
 import uuid
 
 from app.evals.runner.result import PhrasingRun, ToolCallTrace
+
+
+def _trace_url(run_id: uuid.UUID) -> str:
+    """LangSmith resolves '/o/-/r/{id}' to the user's default org. Works for
+    any logged-in user without us needing to know the org UUID.
+    """
+    return f"https://smith.langchain.com/o/-/r/{run_id}"
 
 
 def _stringify_tool_output(content) -> str:
@@ -98,12 +106,17 @@ async def invoke(
     from app.agent.agent import get_agent
 
     thread_id = f"eval_{case_id}_{phrasing_index}_{repeat_index}_{uuid.uuid4().hex[:8]}"
+    # Pre-generate the LangSmith trace ID. LangChain's RunnableConfig.run_id
+    # propagates to LangSmith as the root run UUID — so we know the trace URL
+    # before the call even starts.
+    trace_id = uuid.uuid4()
     config = {
         "configurable": {
             "user_id": user_id,
             "league_id": league_id,
             "thread_id": thread_id,
-        }
+        },
+        "run_id": trace_id,
     }
 
     pr = PhrasingRun(
@@ -111,6 +124,9 @@ async def invoke(
         phrasing=user_message,
         repeat_index=repeat_index,
         agent_thread_id=thread_id,
+        langsmith_trace_id=str(trace_id),
+        langsmith_trace_url=_trace_url(trace_id),
+        langsmith_thread_id=thread_id,  # we use the same id for both
     )
 
     started = time.perf_counter()

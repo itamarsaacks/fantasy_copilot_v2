@@ -77,9 +77,10 @@ class PhrasingRun(BaseModel):
 
     failures: list[AssertionFailure] = Field(default_factory=list)
 
-    # Phase E2 will populate these:
+    # LangSmith / LangGraph linkage (populated in E2)
     langsmith_trace_id: str | None = None
     langsmith_trace_url: str | None = None
+    langsmith_thread_id: str | None = None
     agent_thread_id: str | None = None
 
     @property
