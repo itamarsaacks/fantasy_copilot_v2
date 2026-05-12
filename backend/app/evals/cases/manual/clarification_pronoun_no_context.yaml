@@ -1,0 +1,47 @@
+id: clarification_pronoun_no_context
+description: |
+  User asks "is he good?" at the start of a new conversation — no prior
+  turns, no referent for "he". The right behavior is to ask back, not
+  guess at a player.
+
+  This case locks in that the agent must NOT silently pick a player and
+  fabricate an analysis. Hallucinating a referent here is one of the
+  worst-feeling failure modes for users.
+
+intent:
+  question_type: clarification_needed
+  complexity: simple
+  domain: meta
+  answer_shape: clarification
+
+user_message: "is he good?"
+conversation_prefix: []     # empty — pronoun has zero context
+
+expected:
+  must_ask_clarification: true
+  clarification_must_mention_any:
+    - "who"
+    - "which player"
+    - "do you mean"
+    - "which one"
+  must_not_call_tools:
+    # Agent shouldn't try to resolve the pronoun by guessing
+    - find_player
+    - get_player_projection
+    - compare_players
+    - get_my_roster
+    - search_recent_news
+  response_contains_none:
+    - "I cannot help"
+    - "I don't understand"
+  max_tool_calls: 0          # truly nothing should be called
+  max_latency_ms: 10000
+
+tags:
+  - meta
+  - clarification
+  - core_smoke
+
+provenance:
+  source: manual
+  source_chat_date: "2026-05-12"

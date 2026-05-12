@@ -1,0 +1,62 @@
+id: team_strength_weakness
+description: |
+  User asks where their team is weak. Agent should call get_team_strength
+  (per-stat contributions + rank within league). The tool result is
+  descriptive — for a points league we treat it as informational, not as
+  strategic guidance toward category coverage. The prompt explicitly tells
+  the agent not to recommend "category coverage" trades in a points league,
+  so we guard that string.
+
+intent:
+  question_type: definitional
+  complexity: moderate
+  domain: roster
+  answer_shape: explanation
+
+phrasings:
+  - "where am I weak"
+  - "what does my team need"
+  - "where's my team strong and weak"
+  - "show me my team strengths and weaknesses"
+
+expected:
+  must_call_tools:
+    - get_team_strength
+  must_not_call_tools:
+    - search_recent_news
+    - get_team_roster      # this is the OTHER-team tool
+  response_contains_any:
+    - "weak"
+    - "strong"
+    - "strength"
+    - "rebound"
+    - "assist"
+    - "block"
+    - "steal"
+    - "turnover"
+    - "FG"
+    - "FT"
+    - "points"
+  response_contains_none:
+    - "I don't have"
+    # Points-league strategy guards — the prompt forbids category framing here
+    - "category coverage"
+    - "need more in category"
+    - "weak in a category"
+    # NBA-vs-other-sport hallucinations
+    - "Dolphins"
+    - "Cowboys"
+    - "Yankees"
+  max_tool_calls: 3
+  max_latency_ms: 20000
+  min_response_chars: 100
+
+tags:
+  - roster
+  - team_strength
+  - points_league
+  - core_smoke
+
+provenance:
+  source: manual
+  source_chat_date: "2026-05-12"

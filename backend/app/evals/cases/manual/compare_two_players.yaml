@@ -1,0 +1,60 @@
+id: compare_two_players
+description: |
+  User asks to compare two specific named players. Agent should call
+  compare_players (which internally resolves names + pulls projections +
+  season stats + ownership). The exact verdict is judgment — we don't
+  assert who's "better", only that the comparison happened with the right
+  tool and didn't hallucinate.
+
+  Players chosen: Embiid + Sabonis — both well-known, likely in any
+  v2 dev DB.
+
+intent:
+  question_type: comparative
+  complexity: moderate
+  domain: roster
+  answer_shape: table
+
+phrasings:
+  - "compare Embiid and Sabonis"
+  - "Embiid vs Sabonis"
+  - "who's better — Embiid or Sabonis"
+  - "should I trade Embiid for Sabonis"
+
+expected:
+  must_call_tools:
+    - compare_players
+  must_not_call_tools:
+    # If the agent reaches for these instead of compare_players, it's
+    # misrouting — compare_players already covers projections + ownership
+    - get_top_players_overall
+    - search_recent_news
+  response_contains_any:
+    - "Embiid"
+    - "Sabonis"
+    - "compare"
+    - "projection"
+    - "fps"
+    - "per game"
+    - "vs"
+  response_contains_none:
+    - "I don't have"
+    - "I cannot find"
+    # NBA-vs-other-sport hallucination guards
+    - "Dolphins"
+    - "Cowboys"
+    - "Yankees"
+    # Strategic-framing guard (this is a points league)
+    - "category coverage"
+  max_tool_calls: 3
+  max_latency_ms: 25000
+  min_response_chars: 100
+
+tags:
+  - roster
+  - trades
+  - core_smoke
+
+provenance:
+  source: manual
+  source_chat_date: "2026-05-12"
