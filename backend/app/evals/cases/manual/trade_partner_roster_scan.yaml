@@ -1,0 +1,55 @@
+id: trade_partner_roster_scan
+description: |
+  User wants to scout a specific manager's roster for trade targets.
+  Complete answer:
+    1) the other team's roster
+    2) their strengths (surplus they can deal from)
+    3) their needs (positions where they're thin)
+    4) which of their players might pair with which of yours
+  Essential: get_team_roster + get_team_strength (the other manager).
+  Agent SHOULD also call get_my_roster to find pairings — but we don't
+  require it.
+
+intent:
+  question_type: recommendation
+  complexity: complex
+  domain: trades
+  answer_shape: recommendation
+
+phrasings:
+  - "what does Mark have that I want"
+  - "scout Mark's team for a trade"
+  - "what could I get from Mark"
+  - "trade targets on Mark's roster"
+
+expected:
+  must_call_tools:
+    - get_team_roster
+  must_not_call_tools:
+    - search_recent_news
+  response_contains_any:
+    - "Mark"
+    - "trade"
+    - "target"
+    - "pair"
+    - "offer"
+    - "package"
+    - "roster"
+    - "surplus"
+    - "need"
+  response_contains_none:
+    - "I don't have"
+    - "Cowboys"
+    - "Yankees"
+  max_tool_calls: 5
+  max_latency_ms: 30000
+  min_response_chars: 200
+
+tags:
+  - trades
+  - trades_tab
+  - scouting
+
+provenance:
+  source: manual
+  source_chat_date: "2026-05-12"

@@ -1,0 +1,52 @@
+id: player_vs_top_fas
+description: |
+  User asks how a specific player stacks up against the best free agents.
+  Complete answer:
+    1) the player's projection
+    2) the top-N FAs' projections
+    3) verdict — is the player better than the best available alternatives?
+  Essential: compare_players OR (get_player_projection + top_projected_free_agents).
+  Agent may pick either path — we don't lock to one.
+
+intent:
+  question_type: comparative
+  complexity: moderate
+  domain: waivers
+  answer_shape: recommendation
+
+phrasings:
+  - "is Sengun better than the top free agents"
+  - "should I keep Sengun or grab a free agent"
+  - "Sengun vs the best FAs"
+  - "is anyone on the FA list better than Sengun"
+
+expected:
+  must_not_call_tools:
+    - search_recent_news
+  response_contains_any:
+    - "compare"
+    - "better"
+    - "worse"
+    - "projection"
+    - "fps"
+    - "Sengun"
+    - "free agent"
+    - "FA"
+    - "alternative"
+  response_contains_none:
+    - "I don't have"
+    - "Cowboys"
+    - "Yankees"
+    - "category coverage"
+  max_tool_calls: 4
+  max_latency_ms: 25000
+  min_response_chars: 150
+
+tags:
+  - waivers
+  - comparison
+  - players_tab
+
+provenance:
+  source: manual
+  source_chat_date: "2026-05-12"

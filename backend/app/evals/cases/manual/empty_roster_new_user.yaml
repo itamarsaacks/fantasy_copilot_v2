@@ -1,0 +1,51 @@
+id: empty_roster_new_user
+description: |
+  Edge case: user has connected Yahoo but their roster sync hasn't
+  completed yet (first login). The agent calls get_my_roster and gets
+  back an empty list / "not ready" signal. Complete answer:
+    1) acknowledge the state without panic
+    2) explain the user just connected
+    3) suggest waiting / checking back / next steps
+  Failure mode: agent hallucinates a fake roster, claims an error, or
+  pretends to know players the user doesn't have. We CAN'T realistically
+  test this without a curated test user — so this case is a marker for
+  the behavior we want, with looser process assertions.
+
+intent:
+  question_type: definitional
+  complexity: simple
+  domain: roster
+  answer_shape: explanation
+
+phrasings:
+  - "show me my roster"
+  - "what do I have on my team"
+  - "list my players"
+  - "my roster"
+
+expected:
+  must_call_tools:
+    - get_my_roster
+  must_not_call_tools:
+    - get_team_roster
+  # Mostly hallucination guards — we don't know if the dev DB has a
+  # roster yet. The load-bearing assertion is "agent doesn't invent
+  # players that aren't there".
+  response_contains_none:
+    - "I don't have"           # if roster is real, this would be wrong
+    - "Dolphins"
+    - "Cowboys"
+    - "Yankees"
+    - "category coverage"
+  max_tool_calls: 3
+  max_latency_ms: 20000
+  min_response_chars: 50
+
+tags:
+  - roster
+  - edge_case
+  - core_smoke
+
+provenance:
+  source: manual
+  source_chat_date: "2026-05-12"

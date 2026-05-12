@@ -1,0 +1,51 @@
+id: back_to_back_load
+description: |
+  User asks about back-to-back load this week — high B2B count
+  typically means lower per-game minutes from stars. Complete answer:
+    1) list of teams / players with B2Bs this week
+    2) impact on rostered players' availability
+    3) actionable recommendation (start backups, stream from B2B teams)
+
+  KNOWN GAP: there is no schedule tool today. This case will fail until
+  BACKLOG #3 (get_player_schedule with is_back_to_back) lands. The case
+  is a contract, not a test of today.
+
+intent:
+  question_type: definitional
+  complexity: moderate
+  domain: matchups
+  answer_shape: list
+
+phrasings:
+  - "who has back-to-backs this week"
+  - "B2B load on my roster"
+  - "any of my players on a back-to-back"
+  - "back-to-back games this week"
+
+expected:
+  must_not_call_tools:
+    - search_recent_news
+    - get_top_players_overall
+  response_contains_any:
+    - "back-to-back"
+    - "B2B"
+    - "consecutive"
+    - "two games"
+    - "rest"
+    - "load"
+  response_contains_none:
+    - "I don't have"
+    - "Dolphins"
+    - "Cowboys"
+  max_tool_calls: 4
+  max_latency_ms: 25000
+  min_response_chars: 100
+
+tags:
+  - matchups
+  - schedule
+  - blocked_by_backlog_3
+
+provenance:
+  source: manual
+  source_chat_date: "2026-05-12"

@@ -1,0 +1,52 @@
+id: roster_total_projection
+description: |
+  User asks for their team's total projected output — gut-check on
+  competitiveness. Complete answer:
+    1) sum / average projected fps across roster
+    2) per-position breakdown
+    3) ideally a comparison anchor (league average, top team, etc.)
+  Essential: get_my_roster. Agent may follow up with get_league_summary
+  for the anchor — not required.
+
+intent:
+  question_type: definitional
+  complexity: moderate
+  domain: roster
+  answer_shape: number
+
+phrasings:
+  - "what's my total projection"
+  - "how strong is my team overall"
+  - "what's my team total fantasy output"
+  - "how does my team stack up"
+
+expected:
+  must_call_tools:
+    - get_my_roster
+  must_not_call_tools:
+    - search_recent_news
+    - get_team_roster
+  response_contains_any:
+    - "total"
+    - "average"
+    - "sum"
+    - "fps"
+    - "projected"
+    - "per game"
+    - "team"
+    - "overall"
+  response_contains_none:
+    - "I don't have"
+    - "Dolphins"
+    - "Cowboys"
+  max_tool_calls: 4
+  max_latency_ms: 25000
+  min_response_chars: 100
+
+tags:
+  - roster
+  - team_tab
+
+provenance:
+  source: manual
+  source_chat_date: "2026-05-12"

@@ -1,0 +1,53 @@
+id: roster_full_by_position
+description: |
+  User asks for their roster broken down by position. Complete answer:
+    1) full roster
+    2) grouped by primary position (G / F / FC / C / Util)
+    3) projection per player for fantasy context
+  Essential tool: get_my_roster. Vocabulary should reflect position
+  bucketing AND fantasy value framing.
+
+intent:
+  question_type: definitional
+  complexity: simple
+  domain: roster
+  answer_shape: table
+
+phrasings:
+  - "show me my roster by position"
+  - "my roster grouped by position"
+  - "how does my roster look position by position"
+  - "what do I have at each spot"
+
+expected:
+  must_call_tools:
+    - get_my_roster
+  must_not_call_tools:
+    - get_team_roster      # this is MY roster
+    - search_recent_news
+  response_contains_any:
+    - "guard"
+    - "forward"
+    - "center"
+    - "G"
+    - "F"
+    - "FC"
+    - "Util"
+    - "position"
+  response_contains_none:
+    - "I don't have"
+    - "Dolphins"
+    - "Cowboys"
+    - "Yankees"
+  max_tool_calls: 3
+  max_latency_ms: 20000
+  min_response_chars: 200
+
+tags:
+  - roster
+  - team_tab
+  - core_smoke
+
+provenance:
+  source: manual
+  source_chat_date: "2026-05-12"

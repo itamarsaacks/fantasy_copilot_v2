@@ -1,0 +1,50 @@
+id: player_ownership_check
+description: |
+  User asks whether a specific player is available (rostered vs FA).
+  Complete answer:
+    1) ownership status — FA / rostered (which team) / yours
+    2) if FA, ownership % across leagues for context
+    3) actionable suggestion if available
+  Essential: find_player (returns ownership in this league).
+
+intent:
+  question_type: definitional
+  complexity: simple
+  domain: roster
+  answer_shape: explanation
+
+phrasings:
+  - "is Tyrese Haliburton available"
+  - "is Haliburton a free agent"
+  - "who has Haliburton"
+  - "can I pick up Haliburton"
+
+expected:
+  must_call_tools:
+    - find_player
+  must_not_call_tools:
+    - search_recent_news
+    - get_my_roster
+  response_contains_any:
+    - "Haliburton"
+    - "available"
+    - "rostered"
+    - "free agent"
+    - "owned"
+    - "pickup"
+    - "FA"
+  response_contains_none:
+    - "I don't have"
+    - "I cannot find"
+    - "Colts"
+  max_tool_calls: 3
+  max_latency_ms: 20000
+  min_response_chars: 60
+
+tags:
+  - player_lookup
+  - players_tab
+
+provenance:
+  source: manual
+  source_chat_date: "2026-05-12"

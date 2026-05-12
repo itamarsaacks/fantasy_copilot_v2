@@ -1,0 +1,51 @@
+id: faab_balance_check
+description: |
+  User asks their FAAB balance. Complete answer:
+    1) current FAAB dollars remaining
+    2) context — league's FAAB budget, what's typical to bid
+  Essential: get_league_rules (returns FAAB context). Agent may also
+  need get_my_roster or a team-scoped query to get personal balance —
+  but for now this is a rules + general-context question.
+
+intent:
+  question_type: definitional
+  complexity: simple
+  domain: rules
+  answer_shape: number
+
+phrasings:
+  - "how much FAAB do I have"
+  - "what's my FAAB balance"
+  - "how much can I spend on free agents"
+  - "FAAB remaining"
+
+expected:
+  must_call_tools:
+    - get_league_rules
+  must_not_call_tools:
+    - search_recent_news
+    - get_free_agents
+  response_contains_any:
+    - "FAAB"
+    - "budget"
+    - "dollar"
+    - "$"
+    - "spend"
+    - "bid"
+    - "remaining"
+  response_contains_none:
+    - "I don't have"
+    - "Dolphins"
+    - "Cowboys"
+  max_tool_calls: 3
+  max_latency_ms: 20000
+  min_response_chars: 80
+
+tags:
+  - rules
+  - faab
+  - league_tab
+
+provenance:
+  source: manual
+  source_chat_date: "2026-05-12"

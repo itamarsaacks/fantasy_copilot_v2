@@ -1,0 +1,55 @@
+id: roster_weakest_player
+description: |
+  User asks who their worst player is — a common drop-candidate question.
+  Complete answer:
+    1) identify the lowest-projected player on the roster
+    2) cite the projection number for grounding
+    3) explain why (low minutes, injury, slump) when possible
+    4) suggest drop / hold / stash framing
+  Essential: get_my_roster (returns roster + projections in one shot for
+  this league).
+
+intent:
+  question_type: recommendation
+  complexity: moderate
+  domain: roster
+  answer_shape: recommendation
+
+phrasings:
+  - "who's my worst player"
+  - "who's my weakest link"
+  - "what's the worst player on my team"
+  - "who should I drop"
+
+expected:
+  must_call_tools:
+    - get_my_roster
+  must_not_call_tools:
+    - get_team_roster      # OTHER team
+    - search_recent_news
+  response_contains_any:
+    - "lowest"
+    - "weakest"
+    - "worst"
+    - "drop"
+    - "bottom"
+    - "fps"
+    - "projected"
+    - "per game"
+  response_contains_none:
+    - "I don't have"
+    - "Dolphins"
+    - "Cowboys"
+    - "category coverage"
+  max_tool_calls: 4
+  max_latency_ms: 25000
+  min_response_chars: 150
+
+tags:
+  - roster
+  - team_tab
+  - drop_candidate
+
+provenance:
+  source: manual
+  source_chat_date: "2026-05-12"

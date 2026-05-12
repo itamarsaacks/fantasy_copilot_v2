@@ -1,0 +1,60 @@
+id: roster_strongest_position
+description: |
+  User asks where their team is strongest. In a POINTS league this is
+  informational (not "category coverage"). Complete answer:
+    1) per-stat contribution ranks (rebounds, assists, etc.)
+    2) which stats they're top-3 in (their strength)
+    3) descriptive, not prescriptive — don't suggest category-coverage
+       trades in a points league.
+  Essential: get_team_strength.
+
+intent:
+  question_type: definitional
+  complexity: moderate
+  domain: roster
+  answer_shape: explanation
+
+phrasings:
+  - "where is my team strong"
+  - "what's my team's strength"
+  - "where am I strongest"
+  - "what am I good at"
+
+expected:
+  must_call_tools:
+    - get_team_strength
+  must_not_call_tools:
+    - get_team_roster      # OTHER-team tool
+    - search_recent_news
+  response_contains_any:
+    - "strong"
+    - "strength"
+    - "top"
+    - "lead"
+    - "best in"
+    - "rebound"
+    - "assist"
+    - "steal"
+    - "block"
+    - "points"
+  response_contains_none:
+    - "I don't have"
+    # Points-league guards — DON'T suggest category-trade strategy
+    - "category coverage"
+    - "weak in a category"
+    - "need more in category"
+    - "Dolphins"
+    - "Cowboys"
+  max_tool_calls: 3
+  max_latency_ms: 20000
+  min_response_chars: 100
+
+tags:
+  - roster
+  - team_strength
+  - points_league
+  - team_tab
+
+provenance:
+  source: manual
+  source_chat_date: "2026-05-12"

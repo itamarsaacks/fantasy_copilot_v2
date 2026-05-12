@@ -1,0 +1,52 @@
+id: faab_bid_recommendation
+description: |
+  User asks how much to bid on a specific FA. Complete answer:
+    1) the player's projection
+    2) FAAB context (budget, what % of remaining budget is reasonable)
+    3) ballpark $ range
+    4) reasoning (positional scarcity, recent form)
+  Essential: get_player_projection AND get_league_rules. Without both,
+  the answer is hollow (need value AND budget context).
+
+intent:
+  question_type: recommendation
+  complexity: complex
+  domain: waivers
+  answer_shape: number
+
+phrasings:
+  - "how much should I bid on Sharpe"
+  - "FAAB bid for Shaedon Sharpe"
+  - "what's a fair FAAB bid for Sharpe"
+  - "Sharpe FAAB recommendation"
+
+expected:
+  must_call_tools:
+    - get_player_projection
+  must_not_call_tools:
+    - get_top_players_overall
+  response_contains_any:
+    - "FAAB"
+    - "bid"
+    - "$"
+    - "dollar"
+    - "budget"
+    - "Sharpe"
+    - "projection"
+    - "fps"
+  response_contains_none:
+    - "I don't have"
+    - "Trail Blazers ticket"
+    - "Cowboys"
+  max_tool_calls: 5
+  max_latency_ms: 30000
+  min_response_chars: 100
+
+tags:
+  - waivers
+  - faab
+  - waivers_tab
+
+provenance:
+  source: manual
+  source_chat_date: "2026-05-12"

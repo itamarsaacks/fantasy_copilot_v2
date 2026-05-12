@@ -1,0 +1,52 @@
+id: standings_full_table
+description: |
+  User asks for the full league standings (not just their rank).
+  Complete answer:
+    1) ordered list of all teams
+    2) record / points / points-back per team
+    3) ideally call out gap between contenders
+  Essential: get_league_summary (returns all teams' standings).
+
+intent:
+  question_type: definitional
+  complexity: simple
+  domain: standings
+  answer_shape: table
+
+phrasings:
+  - "show me the full standings"
+  - "what do the standings look like"
+  - "league standings"
+  - "where does everyone rank"
+
+expected:
+  must_call_tools:
+    - get_league_summary
+  must_not_call_tools:
+    - search_recent_news
+    - get_my_roster
+  response_contains_any:
+    - "standing"
+    - "rank"
+    - "first"
+    - "second"
+    - "place"
+    - "points"
+    - "record"
+  response_contains_none:
+    - "I don't have"
+    - "Dolphins"
+    - "Cowboys"
+    - "Yankees"
+  max_tool_calls: 3
+  max_latency_ms: 20000
+  min_response_chars: 200
+
+tags:
+  - standings
+  - league_tab
+  - core_smoke
+
+provenance:
+  source: manual
+  source_chat_date: "2026-05-12"

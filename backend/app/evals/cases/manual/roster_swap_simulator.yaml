@@ -1,0 +1,57 @@
+id: roster_swap_simulator
+description: |
+  User asks "what if I dropped X and picked up Y" — the what-if swap
+  pattern that the Team tab will eventually surface as a UI feature.
+  Complete answer:
+    1) X's projected value (rostered)
+    2) Y's projected value (FA)
+    3) delta / net impact
+    4) recommendation
+  Essential: compare_players (handles both X and Y). Agent may also call
+  get_my_roster or top_projected_free_agents for context.
+
+intent:
+  question_type: comparative
+  complexity: moderate
+  domain: roster
+  answer_shape: recommendation
+
+phrasings:
+  - "what if I dropped Embiid for Sengun"
+  - "should I swap Embiid for Sengun"
+  - "would I be better with Sengun instead of Embiid"
+  - "Embiid for Sengun — worth it?"
+
+expected:
+  must_call_tools:
+    - compare_players
+  must_not_call_tools:
+    - search_recent_news
+  response_contains_any:
+    - "drop"
+    - "swap"
+    - "upgrade"
+    - "downgrade"
+    - "better"
+    - "worse"
+    - "projection"
+    - "fps"
+    - "Embiid"
+    - "Sengun"
+  response_contains_none:
+    - "I don't have"
+    - "Dolphins"
+    - "Cowboys"
+    - "category coverage"   # points-league guard
+  max_tool_calls: 4
+  max_latency_ms: 25000
+  min_response_chars: 150
+
+tags:
+  - roster
+  - team_tab
+  - swap_simulator
+
+provenance:
+  source: manual
+  source_chat_date: "2026-05-12"

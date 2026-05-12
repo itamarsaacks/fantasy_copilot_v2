@@ -1,0 +1,57 @@
+id: start_sit_tonight
+description: |
+  User asks for start/sit decisions for tonight. Complete answer:
+    1) which of user's players are playing tonight
+    2) opponent + game time
+    3) any injury-related sit candidates
+    4) clear start / sit / bench recommendations
+  Essential: get_my_roster.
+
+  KNOWN GAPS: needs BOTH BACKLOG #3 (schedule tool) for who plays
+  tonight AND BACKLOG #1 (injury status table) for availability. Will
+  fail until both land — written for the post-fix world.
+
+intent:
+  question_type: recommendation
+  complexity: complex
+  domain: matchups
+  answer_shape: recommendation
+
+phrasings:
+  - "who should I start tonight"
+  - "start/sit advice for tonight"
+  - "any sit candidates on my roster tonight"
+  - "tonight's start sit"
+
+expected:
+  must_call_tools:
+    - get_my_roster
+  must_not_call_tools:
+    - get_team_roster
+  response_contains_any:
+    - "start"
+    - "sit"
+    - "bench"
+    - "tonight"
+    - "playing"
+    - "out"
+    - "GTD"
+    - "active"
+  response_contains_none:
+    - "I don't have"
+    - "Dolphins"
+    - "Cowboys"
+    - "category coverage"
+  max_tool_calls: 5
+  max_latency_ms: 30000
+  min_response_chars: 200
+
+tags:
+  - matchups
+  - start_sit
+  - blocked_by_backlog_1
+  - blocked_by_backlog_3
+
+provenance:
+  source: manual
+  source_chat_date: "2026-05-12"

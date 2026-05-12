@@ -1,0 +1,58 @@
+id: stat_modifier_rules
+description: |
+  User asks how stats are weighted in the league's scoring. Complete
+  answer:
+    1) the stat modifiers (e.g. 3PTM = 3, REB = 1.2, TO = -1)
+    2) which stats count and which are ignored
+    3) any league-specific quirks
+  Essential: get_league_rules.
+
+intent:
+  question_type: definitional
+  complexity: moderate
+  domain: rules
+  answer_shape: table
+
+phrasings:
+  - "how are points calculated in my league"
+  - "what's the scoring system"
+  - "stat modifiers"
+  - "how does scoring work"
+
+expected:
+  must_call_tools:
+    - get_league_rules
+  must_not_call_tools:
+    - search_recent_news
+    - get_my_roster
+  response_contains_any:
+    - "modifier"
+    - "scoring"
+    - "points"
+    - "rebound"
+    - "assist"
+    - "block"
+    - "steal"
+    - "turnover"
+    - "FG"
+    - "FT"
+    - "3PTM"
+    - "PTS"
+  response_contains_none:
+    - "I don't have"
+    - "Cowboys"
+    - "Yankees"
+    - "NFL"
+    - "MLB"
+  max_tool_calls: 3
+  max_latency_ms: 20000
+  min_response_chars: 150
+
+tags:
+  - rules
+  - scoring
+  - league_tab
+
+provenance:
+  source: manual
+  source_chat_date: "2026-05-12"

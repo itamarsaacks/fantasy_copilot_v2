@@ -1,0 +1,54 @@
+id: pickup_with_drop_paired
+description: |
+  User asks for a paired pickup+drop — "who should I add and who should
+  I drop to make room". Complete answer:
+    1) top FA candidate(s) by projection
+    2) candidate drop(s) from user's roster (worst projection / out for
+       season / etc.)
+    3) net delta and reasoning
+  Essential: top_projected_free_agents AND get_my_roster (both needed
+  for the paired recommendation).
+
+intent:
+  question_type: recommendation
+  complexity: complex
+  domain: waivers
+  answer_shape: recommendation
+
+phrasings:
+  - "who should I pick up and who should I drop"
+  - "best FA add with a paired drop"
+  - "give me a pickup and a drop"
+  - "what's the best waiver move I can make"
+
+expected:
+  must_call_tools:
+    - top_projected_free_agents
+    - get_my_roster
+  must_not_call_tools:
+    - get_team_roster
+  response_contains_any:
+    - "add"
+    - "pickup"
+    - "pick up"
+    - "drop"
+    - "swap"
+    - "for"
+    - "upgrade"
+  response_contains_none:
+    - "I don't have"
+    - "Dolphins"
+    - "Cowboys"
+    - "category coverage"
+  max_tool_calls: 5
+  max_latency_ms: 30000
+  min_response_chars: 200
+
+tags:
+  - waivers
+  - waivers_tab
+  - paired_action
+
+provenance:
+  source: manual
+  source_chat_date: "2026-05-12"

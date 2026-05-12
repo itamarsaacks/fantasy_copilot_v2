@@ -1,0 +1,51 @@
+id: streamer_recommendation
+description: |
+  User asks for a streamer / short-term FA pickup. Complete answer:
+    1) low-ownership FAs with high projection (the definition of a streamer)
+    2) why they're available (under-the-radar, returning from injury, etc.)
+    3) the timing window (this week, next few games)
+  Essential: top_projected_free_agents OR get_free_agents (filtered by
+  low % owned). KNOWN GAP: ideally also calls a schedule tool to pick
+  streamers with the most games — tracked in BACKLOG #3.
+
+intent:
+  question_type: recommendation
+  complexity: moderate
+  domain: waivers
+  answer_shape: list
+
+phrasings:
+  - "best streamer this week"
+  - "who should I stream"
+  - "give me a short-term pickup"
+  - "low-owned guys worth grabbing"
+
+expected:
+  must_not_call_tools:
+    - get_my_roster        # the user is asking about FAs, not their roster
+  response_contains_any:
+    - "stream"
+    - "streamer"
+    - "low-owned"
+    - "low %"
+    - "%"
+    - "available"
+    - "fps"
+    - "projection"
+    - "pickup"
+  response_contains_none:
+    - "I don't have"
+    - "Dolphins"
+    - "Cowboys"
+  max_tool_calls: 4
+  max_latency_ms: 25000
+  min_response_chars: 100
+
+tags:
+  - waivers
+  - streamer
+  - waivers_tab
+
+provenance:
+  source: manual
+  source_chat_date: "2026-05-12"

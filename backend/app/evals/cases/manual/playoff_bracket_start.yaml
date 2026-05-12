@@ -1,0 +1,52 @@
+id: playoff_bracket_start
+description: |
+  User asks when playoffs start / how the bracket works. Complete answer:
+    1) playoff start week (date or week number)
+    2) number of teams that make it
+    3) bracket format (single-elim, 2-week matchups, etc.)
+  Essential: get_league_rules.
+
+intent:
+  question_type: definitional
+  complexity: simple
+  domain: rules
+  answer_shape: explanation
+
+phrasings:
+  - "when do playoffs start"
+  - "playoff schedule"
+  - "how does the bracket work"
+  - "playoff format"
+
+expected:
+  must_call_tools:
+    - get_league_rules
+  must_not_call_tools:
+    - search_recent_news
+    - get_my_roster
+  response_contains_any:
+    - "playoff"
+    - "bracket"
+    - "week"
+    - "team"
+    - "round"
+    - "matchup"
+    - "elimination"
+  response_contains_none:
+    - "I don't have"
+    - "NFL"
+    - "MLB"
+    - "Super Bowl"
+    - "World Series"
+  max_tool_calls: 3
+  max_latency_ms: 20000
+  min_response_chars: 100
+
+tags:
+  - rules
+  - playoffs
+  - league_tab
+
+provenance:
+  source: manual
+  source_chat_date: "2026-05-12"

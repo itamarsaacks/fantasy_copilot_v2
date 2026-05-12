@@ -1,0 +1,52 @@
+id: trade_should_i_accept
+description: |
+  User asks whether to accept an incoming trade. Complete answer:
+    1) compare both sides by projection
+    2) consider roster fit (positional need / surplus)
+    3) verdict with reasoning
+  Essential: compare_players. Agent may also call get_my_roster for
+  roster-fit context.
+
+intent:
+  question_type: recommendation
+  complexity: moderate
+  domain: trades
+  answer_shape: recommendation
+
+phrasings:
+  - "should I accept this trade: Embiid for Jokic"
+  - "is Embiid for Jokic a good trade for me"
+  - "Embiid for Jokic — accept?"
+  - "do I take Embiid for Jokic"
+
+expected:
+  must_call_tools:
+    - compare_players
+  must_not_call_tools:
+    - search_recent_news
+  response_contains_any:
+    - "accept"
+    - "decline"
+    - "counter"
+    - "trade"
+    - "value"
+    - "projection"
+    - "fps"
+    - "upgrade"
+    - "downgrade"
+  response_contains_none:
+    - "I don't have"
+    - "Cowboys"
+    - "Yankees"
+    - "category coverage"
+  max_tool_calls: 4
+  max_latency_ms: 25000
+  min_response_chars: 150
+
+tags:
+  - trades
+  - trades_tab
+
+provenance:
+  source: manual
+  source_chat_date: "2026-05-12"

@@ -1,0 +1,55 @@
+id: player_recent_form
+description: |
+  User asks how a player has been playing lately — last 7/14 days style.
+  Complete answer:
+    1) recent stat line vs season baseline
+    2) trend (heating up / cooling down)
+    3) any context (return from injury, role change)
+  Essential: find_player (returns season stats baseline). Agent may also
+  call search_recent_news for context — appropriate here since "lately"
+  has a news component.
+
+intent:
+  question_type: definitional
+  complexity: moderate
+  domain: roster
+  answer_shape: explanation
+
+phrasings:
+  - "how has Sengun been playing lately"
+  - "Sengun's recent form"
+  - "is Sengun on a hot streak"
+  - "what's Sengun doing the last few weeks"
+
+expected:
+  must_call_tools:
+    - find_player
+  must_not_call_tools:
+    - get_my_roster
+    - get_team_roster
+  response_contains_any:
+    - "recent"
+    - "lately"
+    - "last"
+    - "trend"
+    - "averaging"
+    - "per game"
+    - "Sengun"
+    - "fps"
+  response_contains_none:
+    - "I don't have"
+    - "I cannot find"
+    - "Texans"
+    - "Astros"
+    - "Cowboys"
+  max_tool_calls: 4
+  max_latency_ms: 25000
+  min_response_chars: 100
+
+tags:
+  - player_lookup
+  - players_tab
+
+provenance:
+  source: manual
+  source_chat_date: "2026-05-12"

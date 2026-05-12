@@ -1,0 +1,52 @@
+id: trade_target_by_need
+description: |
+  User asks who they should target in a trade — open-ended. Complete answer:
+    1) identify their team's weaker positions/stats
+    2) suggest tradeable assets they have
+    3) name some target players who would fill the need
+    4) suggest plausible trade partners (managers with surplus there)
+  Essential: get_team_strength (own team) + get_top_players_overall
+  (target pool).
+
+intent:
+  question_type: recommendation
+  complexity: complex
+  domain: trades
+  answer_shape: recommendation
+
+phrasings:
+  - "who should I target in a trade"
+  - "what kind of trade should I look for"
+  - "any trade ideas for me"
+  - "help me find a trade"
+
+expected:
+  must_call_tools:
+    - get_team_strength
+  must_not_call_tools:
+    - search_recent_news
+  response_contains_any:
+    - "trade"
+    - "target"
+    - "need"
+    - "upgrade"
+    - "partner"
+    - "package"
+    - "offer"
+  response_contains_none:
+    - "I don't have"
+    - "Cowboys"
+    - "Yankees"
+    - "category coverage"
+  max_tool_calls: 5
+  max_latency_ms: 30000
+  min_response_chars: 200
+
+tags:
+  - trades
+  - trades_tab
+  - open_ended
+
+provenance:
+  source: manual
+  source_chat_date: "2026-05-12"

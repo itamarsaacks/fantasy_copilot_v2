@@ -1,0 +1,54 @@
+id: trade_two_for_one
+description: |
+  User proposes a 2-for-1 trade (give two, get one back).
+  Complete answer:
+    1) total projected output on each side
+    2) net delta and roster-fit considerations
+    3) verdict — accept / counter / decline
+  Essential: compare_players (supports a list of names).
+
+intent:
+  question_type: comparative
+  complexity: complex
+  domain: trades
+  answer_shape: recommendation
+
+phrasings:
+  - "should I trade Embiid and Sengun for Jokic"
+  - "Embiid + Sengun for Jokic — fair?"
+  - "trade Embiid + Sengun for Jokic"
+  - "is Embiid plus Sengun enough to get Jokic"
+
+expected:
+  must_call_tools:
+    - compare_players
+  must_not_call_tools:
+    - search_recent_news
+  response_contains_any:
+    - "trade"
+    - "fair"
+    - "accept"
+    - "decline"
+    - "counter"
+    - "value"
+    - "projection"
+    - "Embiid"
+    - "Sengun"
+    - "Jokic"
+  response_contains_none:
+    - "I don't have"
+    - "Cowboys"
+    - "Yankees"
+    - "category coverage"
+  max_tool_calls: 4
+  max_latency_ms: 25000
+  min_response_chars: 200
+
+tags:
+  - trades
+  - trades_tab
+  - multi_player_trade
+
+provenance:
+  source: manual
+  source_chat_date: "2026-05-12"

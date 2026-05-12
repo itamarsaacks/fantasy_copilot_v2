@@ -1,0 +1,55 @@
+id: position_specific_fa
+description: |
+  User asks for best FAs at a specific position. Complete answer:
+    1) ranked FAs at the requested position
+    2) projection per player
+    3) ownership %
+  Essential: top_projected_free_agents OR get_free_agents (either can
+  filter by position). The vocabulary check is that the response is
+  POSITION-scoped, not generic.
+
+intent:
+  question_type: recommendation
+  complexity: moderate
+  domain: waivers
+  answer_shape: list
+
+phrasings:
+  - "best free agent guards"
+  - "top FA centers"
+  - "who's the best available forward"
+  - "best FA point guards"
+
+expected:
+  must_not_call_tools:
+    - search_recent_news
+    - get_my_roster
+  response_contains_any:
+    - "guard"
+    - "forward"
+    - "center"
+    - "G"
+    - "F"
+    - "FC"
+    - "PG"
+    - "SG"
+    - "SF"
+    - "PF"
+    - "C"
+  response_contains_none:
+    - "I don't have"
+    - "Dolphins"
+    - "Cowboys"
+    - "Yankees"
+  max_tool_calls: 4
+  max_latency_ms: 25000
+  min_response_chars: 100
+
+tags:
+  - waivers
+  - waivers_tab
+  - position_scoped
+
+provenance:
+  source: manual
+  source_chat_date: "2026-05-12"
