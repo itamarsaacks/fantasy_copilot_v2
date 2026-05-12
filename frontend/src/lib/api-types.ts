@@ -43,3 +43,28 @@ export type HealthResponse = {
   app_mode: "live" | "replay";
   as_of_date: string | null;
 };
+
+// /api/team/{league_id}
+export type TeamPlayerView = {
+  name: string;
+  nba_team: string | null;
+  primary_position: string | null;
+  eligible_positions: string[];
+  selected_position: string | null;
+  status: string | null;
+  status_full: string | null;
+  injury_note: string | null;
+  percent_owned: number | null;
+  projected_fps_per_game: number | null;
+  games_this_week: number;
+  back_to_back_count: number;
+};
+
+export type TeamResponse = {
+  league_id: number;
+  league_name: string;
+  team_name: string;
+  manager_name: string | null;
+  by_position: Record<string, TeamPlayerView[]>;
+  total_projected_fps_per_game: number;
+};
