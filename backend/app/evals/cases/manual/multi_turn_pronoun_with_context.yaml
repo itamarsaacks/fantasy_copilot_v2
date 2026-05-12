@@ -1,0 +1,71 @@
+id: multi_turn_pronoun_with_context
+description: |
+  Multi-turn: prior turn established Michael Porter Jr as the referent.
+  User asks "is he worth keeping". A complete answer requires:
+    1) recognize the pronoun → MPJ from prefix (no clarification ask)
+    2) ground the recommendation in projection / value (get_player_projection)
+    3) ideally compare against current alternatives — either user's own
+       roster (get_my_roster) or top free agents (top_projected_free_agents).
+       Not strictly required; the recommendation can stand on projection +
+       status alone, but vocabulary should reflect comparative framing.
+
+  Essential tool: get_player_projection. We do NOT require additional
+  comparison tools — but we DO assert against the failure mode where
+  the agent asks for clarification or burns budget on web search when
+  the prefix already gave context.
+
+intent:
+  question_type: recommendation
+  complexity: moderate
+  domain: roster
+  answer_shape: explanation
+
+conversation_prefix:
+  - role: user
+    content: "tell me about Michael Porter Jr"
+  - role: assistant
+    content: "Michael Porter Jr. plays for Brooklyn (BKN), forward-center eligible. He's currently flagged INJ with ~38.8 projected fantasy points per game when active."
+
+phrasings:
+  - "is he worth keeping"
+  - "should I hold onto him"
+  - "would you drop him"
+  - "is he a buy or sell"
+
+expected:
+  must_call_tools:
+    - get_player_projection
+  must_not_call_tools:
+    - search_recent_news    # status already in prefix; don't re-search
+  must_ask_clarification: false
+  response_contains_any:
+    - "keep"
+    - "hold"
+    - "drop"
+    - "stash"
+    - "Porter"
+    - "MPJ"
+    - "value"
+    - "worth"
+    - "upside"
+    - "alternative"
+  response_contains_none:
+    - "who do you mean"
+    - "which player"
+    - "could you clarify"
+    - "I'm not sure who"
+    # Wrong-sport guards
+    - "Dolphins"
+    - "Cowboys"
+  max_tool_calls: 4
+  max_latency_ms: 25000
+  min_response_chars: 150
+
+tags:
+  - multi_turn
+  - pronoun_resolution
+  - core_smoke
+
+provenance:
+  source: manual
+  source_chat_date: "2026-05-12"

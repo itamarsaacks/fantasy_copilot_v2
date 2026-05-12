@@ -1,0 +1,62 @@
+id: find_specific_player
+description: |
+  User asks "tell me about Sengun". A complete answer covers:
+    1) identity (team, position)
+    2) fantasy value (projected output, ownership / availability in this league)
+    3) season-level performance context
+  Essential tool: find_player (returns identity + ownership in this league +
+  season stats). Agent MAY also call get_player_projection for forward-looking
+  value — vocabulary should reflect both backward (season) and forward
+  (projected) framing.
+
+intent:
+  question_type: definitional
+  complexity: moderate
+  domain: roster
+  answer_shape: explanation
+
+phrasings:
+  - "tell me about Sengun"
+  - "who is Alperen Sengun"
+  - "info on Sengun"
+  - "what do you know about Sengun"
+
+expected:
+  must_call_tools:
+    - find_player
+  must_not_call_tools:
+    - search_recent_news     # definitional, not news-seeking
+    - get_my_roster
+    - get_team_roster
+  response_contains_any:
+    - "Sengun"           # identity anchoring
+    - "Houston"
+    - "Rockets"
+    - "center"
+    - "FC"
+    - "fps"
+    - "per game"
+    - "projected"
+    - "owned"
+    - "free agent"
+    - "rostered"
+  response_contains_none:
+    - "I don't have"
+    - "I cannot find"
+    # Wrong-sport guards
+    - "Dolphins"
+    - "Cowboys"
+    - "Yankees"
+    - "Texans"
+    - "Astros"
+  max_tool_calls: 3
+  max_latency_ms: 20000
+  min_response_chars: 150
+
+tags:
+  - player_lookup
+  - core_smoke
+
+provenance:
+  source: manual
+  source_chat_date: "2026-05-12"

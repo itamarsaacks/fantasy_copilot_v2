@@ -1,0 +1,54 @@
+id: other_team_roster
+description: |
+  User asks about another manager's roster. The realistic motivation is
+  trade-scouting or rivalry — so a complete answer covers:
+    1) the actual roster (players)
+    2) ideally some shape of the team's strength (where they're loaded /
+       where they're thin), so the user can think about trade angles
+  Essential tool: get_team_roster. Agent MAY also call get_team_strength
+  for richer framing (not required, but vocabulary should reflect it).
+
+intent:
+  question_type: definitional
+  complexity: moderate
+  domain: roster
+  answer_shape: list
+
+phrasings:
+  - "who's on Mark's team"
+  - "show me the roster for team 4"
+  - "what players does the first-place team have"
+  - "who does Itamar have"
+
+expected:
+  must_call_tools:
+    - get_team_roster
+  must_not_call_tools:
+    - get_my_roster         # this is the OTHER-team case
+    - search_recent_news
+    - get_free_agents
+  response_contains_any:
+    - "roster"
+    - "team"
+    - "players"
+    - "lineup"
+    - "G/"        # position abbreviations suggest real roster output
+    - "FC"
+    - "Util"
+  response_contains_none:
+    - "I don't have"
+    - "I cannot find"
+    - "Dolphins"
+    - "Cowboys"
+    - "Yankees"
+  max_tool_calls: 4
+  max_latency_ms: 20000
+  min_response_chars: 200    # roster listing should be substantive
+
+tags:
+  - roster
+  - core_smoke
+
+provenance:
+  source: manual
+  source_chat_date: "2026-05-12"

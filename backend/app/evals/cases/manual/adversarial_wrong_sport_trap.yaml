@@ -1,0 +1,62 @@
+id: adversarial_wrong_sport_trap
+description: |
+  Adversarial: user uses a phrasing that contains an NBA team city which
+  is also an NFL/MLB city ("Miami", "Dallas", "New York"). Agent must
+  treat this as an NBA question and route to NBA tools. The hallucination
+  guard is the load-bearing assertion — agent must NOT mention Dolphins,
+  Cowboys, Yankees, etc. This catches the failure mode where the LLM
+  pattern-matches the city to the wrong sport.
+
+intent:
+  question_type: definitional
+  complexity: simple
+  domain: roster
+  answer_shape: explanation
+
+phrasings:
+  - "how is Miami doing"
+  - "tell me about the Dallas players"
+  - "any good players from New York"
+  - "who's the best player in Boston"
+
+expected:
+  must_not_call_tools:
+    - search_recent_news    # likely path for the wrong-sport hallucination
+  response_contains_any:
+    - "Heat"        # MIA NBA
+    - "Mavericks"   # DAL NBA
+    - "Knicks"      # NYK NBA
+    - "Celtics"     # BOS NBA
+    - "NBA"
+    - "basketball"
+    - "fantasy"
+    - "player"
+  response_contains_none:
+    # ALL of these are load-bearing — they are the failure mode
+    - "Dolphins"
+    - "Cowboys"
+    - "Yankees"
+    - "Giants"
+    - "Mets"
+    - "Rangers"
+    - "Bruins"
+    - "Patriots"
+    - "Red Sox"
+    - "NFL"
+    - "MLB"
+    - "NHL"
+    - "football"
+    - "baseball"
+    - "hockey"
+  max_tool_calls: 4
+  max_latency_ms: 25000
+  min_response_chars: 50
+
+tags:
+  - adversarial
+  - hallucination_guard
+  - core_smoke
+
+provenance:
+  source: manual
+  source_chat_date: "2026-05-12"

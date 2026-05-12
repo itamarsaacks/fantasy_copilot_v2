@@ -105,5 +105,43 @@ where Claude pulls them and proposes case updates.
 
 ---
 
+## 3. Weekly schedule tool (priority: MEDIUM)
+
+**Surfaced:** Phase E4 case authoring on 2026-05-12. When drafting
+`player_projection_single` ("project Embiid this week"), realized a
+complete answer needs **games this week, back-to-back load, and
+opponent strength** — none of which the agent can answer today.
+
+**Problem:** `get_player_projection` returns a per-game projection but
+no schedule context. So the agent can say "Embiid projects 47 FPS per
+game" but can't say "and he plays 4 games this week, with two back-to-
+backs on Tue/Wed and Fri/Sat against soft defenses." For lineup /
+start-sit decisions this is the single most useful piece of context.
+
+**Sketch:**
+
+```
+new tool: get_player_schedule(name, week_offset=0)
+  → {
+      name, nba_team,
+      games: [{date, opponent, home, opp_def_rank, is_back_to_back}, ...],
+      games_this_week: int,
+      back_to_back_count: int,
+    }
+```
+
+Needs a schedule data source (NBA stats API, BallDontLie, etc.) synced
+daily. Opponent defensive rank can ride on existing season stats.
+
+**Why MEDIUM:** off-season right now, so this is dormant. Bump to HIGH
+in September before the season starts.
+
+**Eval cases to add once this lands:**
+- `player_weekly_schedule` — "how many games does Embiid have this week"
+- Expand `player_projection_single` to require `get_player_schedule`
+- New "back-to-back load" case — "who on my team has B2Bs this week"
+
+---
+
 <!-- Add new items above this line. Move completed items to a "Done" section
 or delete them once the corresponding work is committed. -->

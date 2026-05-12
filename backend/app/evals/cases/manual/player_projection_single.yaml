@@ -1,0 +1,60 @@
+id: player_projection_single
+description: |
+  User asks "project Embiid this week". The complete answer should cover:
+    1) projected fantasy output (per-game)
+    2) availability / playing status (INJ / GTD / active)
+    3) ownership context (rostered / FA / your team)
+  Tools: get_player_projection is essential — it returns all three pieces
+  in one call. The agent MAY also call search_recent_news if status is
+  flagged uncertain (not required). Process-only — we never assert the
+  FPS number.
+
+  KNOWN GAP: no weekly-schedule tool exists yet, so "games this week"
+  cannot be answered today. Tracked in BACKLOG #3.
+
+intent:
+  question_type: definitional
+  complexity: moderate
+  domain: projections
+  answer_shape: explanation
+
+phrasings:
+  - "project Embiid this week"
+  - "what's Embiid's projection"
+  - "how many fantasy points will Embiid score"
+  - "Embiid projected output"
+
+expected:
+  must_call_tools:
+    - get_player_projection
+  must_not_call_tools:
+    - get_top_players_overall
+    - top_projected_free_agents     # this is NOT a FA-ranking question
+  response_contains_any:
+    # projection terms
+    - "projected"
+    - "projection"
+    - "fps"
+    - "per game"
+    - "expected"
+  # A complete answer should ALSO mention status. We use a second
+  # response_contains_any via a different vocabulary cluster via
+  # response_contains_none of empty-skeleton phrases below.
+  response_contains_none:
+    - "I don't have"
+    - "I cannot find"
+    # Wrong-sport guards
+    - "Eagles"
+    - "Phillies"
+    - "Sixers vs"     # NFL-style game referencing
+  max_tool_calls: 3
+  max_latency_ms: 20000
+  min_response_chars: 150   # forces a real answer, not a one-liner
+
+tags:
+  - projections
+  - core_smoke
+
+provenance:
+  source: manual
+  source_chat_date: "2026-05-12"
