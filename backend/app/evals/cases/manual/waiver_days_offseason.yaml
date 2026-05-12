@@ -4,12 +4,14 @@
 
 id: waiver_days_offseason
 description: |
-  User asks about waiver days during off-season. Agent should call
-  get_league_rules and answer with the league's waiver type, not search
-  the web or hallucinate a generic answer.
+  User asks about waiver mechanics. Agent should call get_league_rules,
+  not search the web, and reference the league's waiver mechanism in
+  plain English. Process-only assertions — answer text varies by league.
 
-snapshots:
-  - offseason_2026_05
+# Live mode: runs against the actual local DB. Assertions are behavior-only
+# (tool routing + topic vocabulary + hallucination guards). No snapshot
+# required because we don't assert specific answer content.
+mode: live
 
 intent:
   question_type: definitional

@@ -96,16 +96,22 @@ to behavior (prompt selection, projection model). Older docs may say
 - `docs/EVAL_HARNESS.md` — design + operating manual for the eval harness (what it is, intent taxonomy, snapshot strategy, generated vs promoted cases, the `eval-author` skill, weekly digests). Read before touching `app/evals/`.
 - `HANDOFF.md` (added later) — original migration context
 
-## Eval harness (status: scaffolded, not yet runnable)
-- Code lives at `backend/app/evals/`. Cases at `app/evals/cases/{manual,promoted,generated}/`.
+## Eval harness (status: E0 ✅, E1 in progress)
+- Code at `backend/app/evals/`. Cases at `app/evals/cases/{manual,promoted,generated}/`. Snapshots at `app/evals/snapshots/`. Topic contracts at `app/evals/probes/`.
 - `schema.py` is the single source of truth for case shape — Pydantic-validated. Every case has a structured `intent` block (question_type / complexity / domain / answer_shape).
-- `loader.py` parses YAML → `EvalCase`. One starter case lives at `cases/manual/waiver_days_offseason.yaml`.
-- **Hybrid case sources** by design (see `docs/EVAL_HARNESS.md` §13):
-  - **Generated** (volume): an `eval-author` skill enumerates the topic taxonomy, queries the snapshot DB for ground truth, writes cases. Restricted to factual/deterministic questions.
-  - **Promoted** (depth): real chats turned into cases via the promoter. Used for opinion / recommendation / multi-turn cases where there's no DB-derivable ground truth.
-- **Self-reference mitigation**: case generation runs on Opus, agent under test stays on Sonnet.
-- **Monitoring floor**: weekly auto-digest in `app/evals/digests/`. Not zero monitoring — ~5 min/week.
-- Phased build: E0 (schema) ✅ → E1 (runner + first snapshot) → E2 (Postgres results + LangSmith) → E3 (promoter) → E3.5 (eval-author skill) → E4 (multi-snapshot) → E5 (dashboard).
+- `loader.py` parses YAML → `EvalCase`. Starter case at `cases/manual/waiver_days_offseason.yaml`.
+- **Two run modes** (see `docs/EVAL_HARNESS.md` §4):
+  - `live` (default): runs against the actual local DB. Assertions restricted to **process** — tool routing, no-hallucination phrases, format, cost. Covers ~80% of cases.
+  - `snapshot`: runs against a restored frozen DB. Unlocks content-equality assertions (`response_contains_all`, `response_matches_regex`). Use for regression tests, numerical accuracy, date-sensitive logic. Schema rejects content-equality assertions in live mode.
+- **Hybrid case sources** (§13):
+  - Generated (volume, Opus-authored via `eval-author` skill): default live mode, behavior assertions only via topic contracts in `app/evals/probes/`.
+  - Promoted (rare, from real LangSmith chats via promoter): live or snapshot as warranted.
+  - Manual regression (rare, human-authored): typically snapshot mode for locking in fixed bugs.
+- **Self-reference mitigation**: generator uses Opus; agent under test uses Sonnet.
+- **Monitoring floor**: weekly auto-digest in `app/evals/digests/`. ~5 min/week.
+- **Cost policy** (§14): tiered runs — smoke subset on every commit (pennies), domain-filtered during dev, full suite nightly + on-demand pre-merge (~$10–15/day at maturity). Don't run full suite on every commit.
+- **Snapshot capture**: `scripts/eval_capture_snapshot.py --snapshot-id X --as-of-date YYYY-MM-DD`. First snapshot `offseason_2026_05` captured 2026-05-12 (15 tables, ~36k rows).
+- Phased build: E0 (schema + capture) ✅ → E1 (live-mode runner) ← here → E2 (Postgres results + LangSmith) → E3 (promoter) → E3.5 (eval-author skill) → E4 (snapshot-mode runner + multi-snapshot) → E5 (dashboard).
 
 ## Parallel work
 Use the built-in `Agent(isolation: "worktree")` for any parallelizable work. Don't manually create branches.

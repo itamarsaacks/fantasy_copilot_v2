@@ -16,6 +16,31 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 # ---------------------------------------------------------------------------
+# Run mode (§4 — live vs snapshot)
+# ---------------------------------------------------------------------------
+
+
+class Mode(str, Enum):
+    """Whether the case runs against the live DB or a frozen snapshot.
+
+    See docs/EVAL_HARNESS.md §4 for the full rationale. Short version:
+      - LIVE: most cases. Asserts on agent behavior (tool routing, no
+        hallucination, format, cost). Default.
+      - SNAPSHOT: minority of cases. Required when assertions need
+        frozen ground truth (regression tests, numerical accuracy,
+        date-sensitive logic).
+    """
+
+    LIVE = "live"
+    SNAPSHOT = "snapshot"
+
+
+# Assertion fields that perform content-equality. Forbidden in live mode
+# because they require frozen ground truth to be stable.
+CONTENT_EQUALITY_FIELDS = ("response_contains_all", "response_matches_regex")
+
+
+# ---------------------------------------------------------------------------
 # Intent taxonomy (§6 — structured intent block)
 # ---------------------------------------------------------------------------
 
@@ -150,7 +175,13 @@ class EvalCase(BaseModel):
 
     id: str = Field(..., min_length=1, pattern=r"^[a-z0-9_]+$")
     description: str = Field(..., min_length=1)
-    snapshots: list[str] = Field(..., min_length=1)
+
+    # Run mode. `live` (default) runs against the actual local DB; assertions
+    # are restricted to behavior. `snapshot` runs against a frozen snapshot;
+    # content-equality assertions become legal. See §4.
+    mode: Mode = Mode.LIVE
+    snapshot_id: str | None = None
+
     intent: Intent
 
     # The user's message. Use either `user_message` (single) or `phrasings`
@@ -181,6 +212,48 @@ class EvalCase(BaseModel):
             )
         if not has_single and not has_multi:
             raise ValueError("Must set either `user_message` or `phrasings`.")
+        return self
+
+    @model_validator(mode="after")
+    def _validate_mode_snapshot(self) -> "EvalCase":
+        """`live` mode forbids snapshot_id; `snapshot` mode requires it."""
+        if self.mode == Mode.LIVE and self.snapshot_id is not None:
+            raise ValueError(
+                f"Case '{self.id}' has mode=live but sets snapshot_id="
+                f"'{self.snapshot_id}'. Remove snapshot_id or change mode to snapshot."
+            )
+        if self.mode == Mode.SNAPSHOT and not self.snapshot_id:
+            raise ValueError(
+                f"Case '{self.id}' has mode=snapshot but no snapshot_id. "
+                f"Set snapshot_id to the snapshot directory name."
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _validate_content_equality_only_in_snapshot(self) -> "EvalCase":
+        """Content-equality assertions require frozen state — snapshot mode only.
+
+        See §6 of the design doc. In live mode the underlying DB shifts as
+        sync jobs run; asserting specific text against it produces flaky
+        cases. Loose-OR'd `response_contains_any` is fine in live mode,
+        but `response_contains_all` and `response_matches_regex` require
+        a snapshot.
+        """
+        if self.mode == Mode.SNAPSHOT:
+            return self
+        violations = []
+        if self.expected.response_contains_all:
+            violations.append("response_contains_all")
+        if self.expected.response_matches_regex is not None:
+            violations.append("response_matches_regex")
+        if violations:
+            raise ValueError(
+                f"Case '{self.id}' uses content-equality assertions "
+                f"({', '.join(violations)}) but mode=live. "
+                f"These assertions need frozen state — switch to "
+                f"mode=snapshot with a snapshot_id, or use "
+                f"response_contains_any with loose-OR'd terms instead."
+            )
         return self
 
     @model_validator(mode="after")
