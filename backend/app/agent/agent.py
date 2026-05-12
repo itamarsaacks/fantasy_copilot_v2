@@ -28,6 +28,7 @@ from app.agent.tools.analytics import (  # noqa: E402
     get_top_players_overall,
 )
 from app.agent.tools.free_agents import get_free_agents  # noqa: E402
+from app.agent.tools.injury import get_injury_status  # noqa: E402
 from app.agent.tools.league import get_league_summary  # noqa: E402
 from app.agent.tools.league_rules import get_league_rules  # noqa: E402
 from app.agent.tools.player import find_player  # noqa: E402
@@ -52,6 +53,7 @@ ALL_TOOLS = [
     get_top_by_stat,
     compare_players,
     get_team_strength,
+    get_injury_status,
     search_recent_news,
 ]
 

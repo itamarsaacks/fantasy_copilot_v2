@@ -179,6 +179,10 @@ class Player(Base):
 
     nba_team_abbr: Mapped[str | None] = mapped_column(String, nullable=True)
     status: Mapped[str | None] = mapped_column(String, nullable=True)  # IL, GTD, OUT, ...
+    # Yahoo's longer description ("Day-To-Day", "Out", "Doubtful")
+    status_full: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Free-text injury notes from Yahoo ("Knee — expected back this week")
+    injury_note: Mapped[str | None] = mapped_column(Text, nullable=True)
     image_url: Mapped[str | None] = mapped_column(String, nullable=True)
     uniform_number: Mapped[str | None] = mapped_column(String, nullable=True)
 

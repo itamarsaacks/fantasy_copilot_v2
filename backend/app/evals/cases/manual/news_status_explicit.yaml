@@ -1,13 +1,16 @@
 id: news_status_explicit
 description: |
-  User explicitly asks for the latest news on a specific player. This is
-  the CASE where search_recent_news IS the right tool — counterpoint to
-  the FA-list case where the agent shouldn't reach for it. The injury_status
-  table (docs/BACKLOG.md #1) will eventually become the preferred source,
-  but for now news search is the live channel.
+  User explicitly asks for the latest news on a specific player.
+  Complete answer should combine:
+    1) structured status from get_injury_status (Yahoo-sourced: flag,
+       description, free-text note)
+    2) any narrative context from search_recent_news (rumors, lineup
+       movements, beat reporter quotes)
+  Essential: get_injury_status. The agent MAY also call search_recent_news
+  but doesn't have to — Yahoo's note often answers the question already.
 
   Player chosen: Embiid — likely to exist in any v2 dev DB, has injury
-  history so news typically exists.
+  history so status/note typically populated.
 
 intent:
   question_type: definitional
@@ -23,7 +26,7 @@ phrasings:
 
 expected:
   must_call_tools:
-    - search_recent_news
+    - get_injury_status
   must_not_call_tools:
     # Agent shouldn't reach for projections / roster for a "news" question
     - get_player_projection
@@ -35,13 +38,17 @@ expected:
     - "76ers"
     - "Philadelphia"
     - "PHI"
+    - "status"
+    - "out"
+    - "GTD"
+    - "active"
   response_contains_none:
     - "I don't have"
     - "I cannot search"
     - "Eagles"           # PHI is the 76ers, NOT the Eagles
     - "Phillies"
-  max_tool_calls: 2
-  max_latency_ms: 30000   # web search is slower
+  max_tool_calls: 3
+  max_latency_ms: 30000   # web search is slower if used
 
 tags:
   - news

@@ -1,0 +1,58 @@
+id: injury_screen_fa_list
+description: |
+  User asks for healthy free agents specifically — the marquee use case
+  for the new get_injury_status tool. Complete answer:
+    1) ranked FA list (top_projected_free_agents)
+    2) status screen across that list (get_injury_status, bulk)
+    3) recommendation filtered to healthy options
+    4) optional "watch list" of injured-but-valuable
+
+  Essential: top_projected_free_agents AND get_injury_status. This is
+  the case that demonstrates the agent should batch-check status
+  instead of firing one web search per player.
+
+intent:
+  question_type: recommendation
+  complexity: moderate
+  domain: waivers
+  answer_shape: list
+
+phrasings:
+  - "give me healthy free agents to pick up"
+  - "best FAs who are actually playing"
+  - "top free agents not injured"
+  - "healthy waiver targets"
+
+expected:
+  must_call_tools:
+    - top_projected_free_agents
+    - get_injury_status
+  must_not_call_tools:
+    - search_recent_news     # the new tool replaces this for screening
+  response_contains_any:
+    - "healthy"
+    - "active"
+    - "available"
+    - "playing"
+    - "INJ"
+    - "OUT"
+    - "GTD"
+    - "status"
+    - "watch list"
+  response_contains_none:
+    - "I don't have"
+    - "Dolphins"
+    - "Cowboys"
+    - "Yankees"
+  max_tool_calls: 4
+  max_latency_ms: 25000
+  min_response_chars: 150
+
+tags:
+  - waivers
+  - injury
+  - core_smoke
+
+provenance:
+  source: manual
+  source_chat_date: "2026-05-12"

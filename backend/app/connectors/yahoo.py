@@ -515,6 +515,8 @@ def _parse_one_player(player_entry: list[Any]) -> dict[str, Any] | None:
         "primary_position": primary_position,
         "nba_team_abbr": meta.get("editorial_team_abbr"),
         "status": meta.get("status") or None,
+        "status_full": meta.get("status_full") or None,
+        "injury_note": meta.get("injury_note") or None,
         "image_url": meta.get("image_url"),
         "uniform_number": meta.get("uniform_number"),
         # Yahoo-global ownership data (set when ;out=percent_owned was used)

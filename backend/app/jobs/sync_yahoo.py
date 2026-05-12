@@ -238,6 +238,8 @@ def _apply_player_fields(player: Player, pdata: dict) -> None:
     player.primary_position = pdata.get("primary_position")
     player.nba_team_abbr = pdata.get("nba_team_abbr")
     player.status = pdata.get("status")
+    player.status_full = pdata.get("status_full")
+    player.injury_note = pdata.get("injury_note")
     player.image_url = pdata.get("image_url")
     player.uniform_number = pdata.get("uniform_number")
 

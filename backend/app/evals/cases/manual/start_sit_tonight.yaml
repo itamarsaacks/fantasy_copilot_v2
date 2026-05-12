@@ -26,6 +26,7 @@ phrasings:
 expected:
   must_call_tools:
     - get_my_roster
+    - get_injury_status
   must_not_call_tools:
     - get_team_roster
   response_contains_any:
@@ -49,8 +50,7 @@ expected:
 tags:
   - matchups
   - start_sit
-  - blocked_by_backlog_1
-  - blocked_by_backlog_3
+  - blocked_by_backlog_3   # still needs schedule tool for "tonight" framing
 
 provenance:
   source: manual
