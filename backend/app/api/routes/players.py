@@ -856,3 +856,174 @@ async def get_player_detail(
         projection=projection,
         news=news,
     )
+
+
+# ===========================================================================
+# Player ownership timeline — drives the "while I owned him" UX on the
+# detail drawer. First call to this endpoint triggers a one-time
+# transactions sync for the league.
+# ===========================================================================
+
+
+class OwnershipEvent(BaseModel):
+    occurred_at: str
+    event_type: Literal["add", "drop", "trade"]
+    from_team_id: int | None
+    from_team_name: str | None
+    to_team_id: int | None
+    to_team_name: str | None
+    transaction_key: str
+
+
+class OwnershipInterval(BaseModel):
+    """A continuous span of time the player belonged to one team.
+
+    `team_id == None` means a free-agent interval (between drops and
+    re-adds). `ended_at == None` means current ownership.
+    """
+
+    team_id: int | None
+    team_name: str | None
+    is_user_team: bool
+    started_at: str
+    ended_at: str | None
+
+
+class OwnershipTimelineResponse(BaseModel):
+    league_id: int
+    player_id: int
+    events: list[OwnershipEvent]
+    intervals: list[OwnershipInterval]
+    sync_summary: dict[str, int]
+
+
+def _build_intervals(
+    events: list[PlayerOwnershipEvent], teams_by_id: dict[int, Team]
+) -> list[OwnershipInterval]:
+    """Walk events oldest→newest and emit continuous ownership intervals."""
+    sorted_events = sorted(events, key=lambda e: e.occurred_at)
+    intervals: list[OwnershipInterval] = []
+    current_team_id: int | None = None
+    current_started: datetime | None = None
+
+    def _flush(end_at: datetime | None):
+        nonlocal current_team_id, current_started
+        if current_started is None:
+            return
+        team = teams_by_id.get(current_team_id) if current_team_id else None
+        intervals.append(
+            OwnershipInterval(
+                team_id=current_team_id,
+                team_name=team.name if team else None,
+                is_user_team=bool(team and team.is_user_team),
+                started_at=current_started.isoformat(),
+                ended_at=end_at.isoformat() if end_at else None,
+            )
+        )
+
+    for ev in sorted_events:
+        # After each event the player's "now owned by" state changes to
+        # the destination team (or to no-team on a drop).
+        new_owner = ev.to_team_id if ev.event_type in ("add", "trade") else None
+        if current_started is None:
+            current_team_id = new_owner
+            current_started = ev.occurred_at
+            continue
+        if new_owner == current_team_id:
+            continue
+        _flush(ev.occurred_at)
+        current_team_id = new_owner
+        current_started = ev.occurred_at
+    _flush(None)
+    return intervals
+
+
+@router.get(
+    "/{league_id}/{player_id}/ownership", response_model=OwnershipTimelineResponse
+)
+async def get_player_ownership(
+    league_id: int,
+    player_id: int,
+    sync: bool = Query(default=True, description="Refresh from Yahoo before returning"),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+):
+    from app.jobs.sync_transactions import sync_league_transactions  # local import to avoid cycles
+
+    league = (
+        await db.execute(
+            select(League).where(League.id == league_id, League.user_id == user.id)
+        )
+    ).scalar_one_or_none()
+    if league is None:
+        raise HTTPException(404, "league not found")
+    if (await db.get(Player, player_id)) is None:
+        raise HTTPException(404, "player not found")
+
+    from app.db.models import PlayerOwnershipEvent  # local for clarity
+
+    # Only run the (slow) sync if asked AND we have no events yet for this
+    # league. Subsequent loads of a player drawer hit pure DB and return
+    # in ~50ms. A future cron or admin button can force a re-sync.
+    sync_summary = {"fetched": 0, "players_seen": 0, "events_written": 0}
+    existing_count = (
+        await db.execute(
+            select(func.count())
+            .select_from(PlayerOwnershipEvent)
+            .where(PlayerOwnershipEvent.league_id == league_id)
+        )
+    ).scalar_one()
+    if sync and existing_count == 0:
+        try:
+            sync_summary = await sync_league_transactions(
+                db, user=user, league=league
+            )
+        except Exception as exc:  # noqa: BLE001
+            sync_summary["error"] = str(exc)  # type: ignore[assignment]
+
+    rows = (
+        await db.execute(
+            select(PlayerOwnershipEvent)
+            .where(
+                PlayerOwnershipEvent.league_id == league_id,
+                PlayerOwnershipEvent.player_id == player_id,
+            )
+            .order_by(PlayerOwnershipEvent.occurred_at.asc())
+        )
+    ).scalars().all()
+
+    # Resolve team names for the events + intervals
+    team_ids_referenced: set[int] = set()
+    for ev in rows:
+        if ev.from_team_id:
+            team_ids_referenced.add(ev.from_team_id)
+        if ev.to_team_id:
+            team_ids_referenced.add(ev.to_team_id)
+    teams_by_id: dict[int, Team] = {}
+    if team_ids_referenced:
+        team_rows = (
+            await db.execute(select(Team).where(Team.id.in_(team_ids_referenced)))
+        ).scalars().all()
+        teams_by_id = {t.id: t for t in team_rows}
+
+    events = [
+        OwnershipEvent(
+            occurred_at=ev.occurred_at.isoformat(),
+            event_type=ev.event_type,  # type: ignore[arg-type]
+            from_team_id=ev.from_team_id,
+            from_team_name=teams_by_id.get(ev.from_team_id).name if ev.from_team_id and teams_by_id.get(ev.from_team_id) else None,
+            to_team_id=ev.to_team_id,
+            to_team_name=teams_by_id.get(ev.to_team_id).name if ev.to_team_id and teams_by_id.get(ev.to_team_id) else None,
+            transaction_key=ev.transaction_key,
+        )
+        for ev in rows
+    ]
+    intervals = _build_intervals(rows, teams_by_id)
+
+    return OwnershipTimelineResponse(
+        league_id=league_id,
+        player_id=player_id,
+        events=events,
+        intervals=intervals,
+        sync_summary=sync_summary,
+    )

@@ -409,6 +409,62 @@ class Trade(Base):
 
 
 # ---------------------------------------------------------------------------
+# Player ownership history — derived from Yahoo transactions, used to
+# answer "how did this player get to my team / when did I lose him."
+# ---------------------------------------------------------------------------
+
+
+class PlayerOwnershipEvent(Base):
+    """A single ownership change for a player in a league.
+
+    Walking these events ordered by occurred_at lets the UI reconstruct
+    the full timeline ("was on team X, traded to team Y, dropped, picked
+    up by free-agent claim by team Z, ...").
+
+    Source = NULL means the player was a free agent before the event
+    (added from FA). Dest = NULL means the player became a free agent
+    (drop). transaction_key dedupes against Yahoo so re-running the
+    sync is idempotent.
+    """
+
+    __tablename__ = "player_ownership_events"
+    __table_args__ = (
+        UniqueConstraint(
+            "league_id",
+            "player_id",
+            "transaction_key",
+            name="uq_pownerevt_unique",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    league_id: Mapped[int] = mapped_column(
+        ForeignKey("leagues.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    player_id: Mapped[int] = mapped_column(
+        ForeignKey("players.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    occurred_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, index=True
+    )
+    event_type: Mapped[str] = mapped_column(
+        String, nullable=False
+    )  # add | drop | trade
+    from_team_id: Mapped[int | None] = mapped_column(
+        ForeignKey("teams.id", ondelete="SET NULL"), nullable=True
+    )
+    to_team_id: Mapped[int | None] = mapped_column(
+        ForeignKey("teams.id", ondelete="SET NULL"), nullable=True
+    )
+    transaction_key: Mapped[str] = mapped_column(String, nullable=False)
+    raw: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+# ---------------------------------------------------------------------------
 # Projections — cache (current) + history (daily snapshot)
 # ---------------------------------------------------------------------------
 

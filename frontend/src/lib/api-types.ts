@@ -127,6 +127,33 @@ export type PlayerDetailResponse = {
   news: PlayerNewsItem[];
 };
 
+// /api/players/{league_id}/{player_id}/ownership
+export type OwnershipEvent = {
+  occurred_at: string;
+  event_type: "add" | "drop" | "trade";
+  from_team_id: number | null;
+  from_team_name: string | null;
+  to_team_id: number | null;
+  to_team_name: string | null;
+  transaction_key: string;
+};
+
+export type OwnershipInterval = {
+  team_id: number | null;
+  team_name: string | null;
+  is_user_team: boolean;
+  started_at: string;
+  ended_at: string | null;
+};
+
+export type OwnershipTimelineResponse = {
+  league_id: number;
+  player_id: number;
+  events: OwnershipEvent[];
+  intervals: OwnershipInterval[];
+  sync_summary: Record<string, number | string>;
+};
+
 // /api/admin/evals/*
 export type EvalRunSummary = {
   id: number;

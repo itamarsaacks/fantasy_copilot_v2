@@ -390,6 +390,131 @@ def _parse_player_stats(payload: dict[str, Any]) -> dict[str, list[dict[str, Any
     return out
 
 
+async def fetch_league_transactions(
+    access_token: str,
+    league_key: str,
+    page_size: int = 25,
+    max_pages: int = 200,  # 200 × 25 = 5000 txns — enough for a full season
+) -> list[dict[str, Any]]:
+    """Pull every transaction in a league. Returns a flat list of dicts.
+
+    Each dict shape:
+      {
+        "transaction_key": "...",
+        "type": "add/drop" | "add" | "drop" | "trade" | "commish",
+        "status": "successful" | "...",
+        "timestamp": int (unix seconds),
+        "players": [
+          {
+            "player_key": "466.p.5769",
+            "movement_type": "add" | "drop",
+            "source_team_key": None | "466.l.x.t.y",
+            "destination_team_key": None | "466.l.x.t.y",
+          },
+          ...
+        ],
+      }
+
+    Pagination: Yahoo caps responses, we iterate `start` until empty.
+    """
+    headers = {"Authorization": f"Bearer {access_token}", "Accept": "application/json"}
+    out: list[dict[str, Any]] = []
+    async with httpx.AsyncClient(timeout=20) as client:
+        for page in range(max_pages):
+            start = page * page_size
+            url = (
+                f"{FANTASY_API_BASE}/league/{league_key}/transactions;"
+                f"start={start};count={page_size}?format=json"
+            )
+            resp = await client.get(url, headers=headers)
+            if resp.status_code == 404:
+                break
+            resp.raise_for_status()
+            page_rows = _parse_transactions(resp.json())
+            if not page_rows:
+                break
+            out.extend(page_rows)
+            if len(page_rows) < page_size:
+                break
+    return out
+
+
+def _parse_transactions(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    try:
+        txns = payload["fantasy_content"]["league"][1]["transactions"]
+    except (KeyError, IndexError, TypeError):
+        return []
+    if not isinstance(txns, dict):
+        return []
+    count = int(txns.get("count", 0))
+    out: list[dict[str, Any]] = []
+    for i in range(count):
+        wrapper = txns.get(str(i), {}).get("transaction")
+        if not isinstance(wrapper, list) or not wrapper:
+            continue
+        meta = wrapper[0]
+        if not isinstance(meta, dict):
+            continue
+        tx_key = meta.get("transaction_key")
+        if not tx_key:
+            continue
+        try:
+            ts = int(meta.get("timestamp"))
+        except (TypeError, ValueError):
+            ts = 0
+        # players are in wrapper[1]['players']
+        players: list[dict[str, Any]] = []
+        if len(wrapper) >= 2 and isinstance(wrapper[1], dict):
+            pcount_holder = wrapper[1].get("players") or {}
+            pcount = (
+                int(pcount_holder.get("count", 0))
+                if isinstance(pcount_holder, dict)
+                else 0
+            )
+            for j in range(pcount):
+                inner = pcount_holder.get(str(j), {}).get("player")
+                if not isinstance(inner, list) or len(inner) < 2:
+                    continue
+                # First element is the player meta list (flatten to find player_key)
+                player_key = None
+                meta_block = inner[0]
+                if isinstance(meta_block, list):
+                    for sub in meta_block:
+                        if isinstance(sub, dict) and sub.get("player_key"):
+                            player_key = sub["player_key"]
+                            break
+                # Second is {'transaction_data': [...] | {...}}
+                txd_holder = inner[1]
+                txd_items: list[dict[str, Any]] = []
+                if isinstance(txd_holder, dict):
+                    raw_txd = txd_holder.get("transaction_data")
+                    if isinstance(raw_txd, list):
+                        txd_items = [x for x in raw_txd if isinstance(x, dict)]
+                    elif isinstance(raw_txd, dict):
+                        txd_items = [raw_txd]
+                for txd in txd_items:
+                    players.append(
+                        {
+                            "player_key": player_key,
+                            "movement_type": txd.get("type"),
+                            "source_type": txd.get("source_type"),
+                            "destination_type": txd.get("destination_type"),
+                            "source_team_key": txd.get("source_team_key"),
+                            "destination_team_key": txd.get("destination_team_key"),
+                        }
+                    )
+        out.append(
+            {
+                "transaction_key": tx_key,
+                "type": meta.get("type"),
+                "status": meta.get("status"),
+                "timestamp": ts,
+                "players": players,
+            }
+        )
+    return out
+
+
 async def fetch_league_free_agents(
     access_token: str, league_key: str, page_size: int = 25
 ) -> list[dict[str, Any]]:
