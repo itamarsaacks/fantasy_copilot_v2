@@ -288,32 +288,52 @@ async def get_waivers(
     drops = drops[:limit_drops]
 
     # ------------------------------------------------------------------
-    # Suggested swaps — top combos by net delta
+    # Suggested swaps — one per pickup, paired with the best legal drop.
+    #
+    # The naive cartesian product produces N copies of the same pickup
+    # paired with each 0-window drop (which all give identical max delta).
+    # That floods the UI with the same recommendation. Instead, take the
+    # top pickups and for each one find the single drop that maximizes
+    # net delta. Net effect: K diverse pickup ideas instead of K rows
+    # repeating the same player.
     # ------------------------------------------------------------------
     swaps: list[SuggestedSwap] = []
+    used_drop_ids: set[int] = set()
     for pick in pickups:
+        if pick.window_fps is None:
+            continue
+        # Best legal drop = lowest window_fps not yet committed to another
+        # swap suggestion. We commit drops so two pickups don't both
+        # claim the same drop in the suggestions panel.
+        best_drop: WaiverCandidate | None = None
         for drop in drops:
-            if pick.window_fps is None or drop.window_fps is None:
+            if drop.player_id in used_drop_ids:
                 continue
-            delta = pick.window_fps - drop.window_fps
-            if delta <= 0:
-                # Not interesting — pickup isn't better than the drop.
+            if drop.window_fps is None:
                 continue
-            per_game_delta = round(
-                (pick.projected_fps_per_game or 0)
-                - (drop.projected_fps_per_game or 0),
-                2,
+            if pick.window_fps - drop.window_fps <= 0:
+                continue
+            if best_drop is None or (drop.window_fps < (best_drop.window_fps or 0)):
+                best_drop = drop
+        if best_drop is None:
+            continue
+        used_drop_ids.add(best_drop.player_id)
+        delta = pick.window_fps - (best_drop.window_fps or 0)
+        per_game_delta = round(
+            (pick.projected_fps_per_game or 0)
+            - (best_drop.projected_fps_per_game or 0),
+            2,
+        )
+        swaps.append(
+            SuggestedSwap(
+                pickup=pick,
+                drop=best_drop,
+                delta_window_fps=round(delta, 2),
+                delta_per_game=per_game_delta,
             )
-            swaps.append(
-                SuggestedSwap(
-                    pickup=pick,
-                    drop=drop,
-                    delta_window_fps=round(delta, 2),
-                    delta_per_game=per_game_delta,
-                )
-            )
-    swaps.sort(key=lambda s: -s.delta_window_fps)
-    swaps = swaps[:limit_swaps]
+        )
+        if len(swaps) >= limit_swaps:
+            break
 
     return WaiversResponse(
         league_id=league_id,
