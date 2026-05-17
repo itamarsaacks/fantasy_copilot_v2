@@ -62,6 +62,25 @@ class Settings(BaseSettings):
     # --- Admin endpoints
     admin_secret: str = ""
 
+    # Comma-separated User.id values that may hit /api/admin/* via cookie auth.
+    # Empty = no one is admin via cookie (X-Admin-Secret routes still work).
+    # We use User.id rather than email because we don't currently capture
+    # email from Yahoo; revisit when we add an email field for public launch.
+    admin_user_ids: str = ""
+
+    @property
+    def admin_user_id_set(self) -> set[int]:
+        out: set[int] = set()
+        for chunk in (self.admin_user_ids or "").split(","):
+            chunk = chunk.strip()
+            if not chunk:
+                continue
+            try:
+                out.add(int(chunk))
+            except ValueError:
+                continue
+        return out
+
 
 @lru_cache
 def get_settings() -> Settings:

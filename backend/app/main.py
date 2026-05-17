@@ -29,6 +29,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.agent import checkpointer as agent_checkpointer
 from app.api.routes import admin as admin_routes
+from app.api.routes import admin_evals as admin_evals_routes
 from app.api.routes import auth as auth_routes
 from app.api.routes import chat as chat_routes
 from app.api.routes import conversations as conversation_routes
@@ -131,6 +132,7 @@ app.include_router(players_routes.router)
 app.include_router(waivers_routes.router)
 app.include_router(league_routes.router)
 app.include_router(trades_routes.router)
+app.include_router(admin_evals_routes.router)
 
 
 @app.get("/health")

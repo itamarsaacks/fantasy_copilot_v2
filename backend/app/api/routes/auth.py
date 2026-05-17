@@ -161,12 +161,14 @@ async def me(
 ):
     leagues_q = await db.execute(select(League).where(League.user_id == user.id))
     leagues = leagues_q.scalars().all()
+    settings = get_settings()
     return {
         "user": {
             "id": user.id,
             "yahoo_guid": user.yahoo_guid,
             "auth_broken": user.auth_broken,
             "token_expires_at": user.token_expires_at.isoformat(),
+            "is_admin": user.id in settings.admin_user_id_set,
         },
         "leagues": [
             {

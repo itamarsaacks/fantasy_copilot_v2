@@ -20,6 +20,7 @@ export type MeUser = {
   yahoo_guid: string;
   auth_broken: boolean;
   token_expires_at: string;
+  is_admin?: boolean;
 };
 
 export type MeResponse = {
@@ -42,6 +43,97 @@ export type HealthResponse = {
   status: "ok" | string;
   app_mode: "live" | "replay";
   as_of_date: string | null;
+};
+
+// /api/admin/evals/*
+export type EvalRunSummary = {
+  id: number;
+  started_at: string;
+  finished_at: string | null;
+  git_sha: string | null;
+  git_branch: string | null;
+  triggered_by: string;
+  model: string | null;
+  total_cases: number;
+  total_phrasings: number;
+  strict_passed: number;
+  soft_passed: number;
+  failed: number;
+  errored: number;
+  total_latency_ms: number;
+  total_cost_usd: number | null;
+  pass_rate: number | null;
+};
+
+export type EvalCaseResultSummary = {
+  id: number;
+  case_id: string;
+  phrasing: string;
+  repeat_index: number;
+  verdict: string;
+  errored: boolean;
+  error_message: string | null;
+  latency_ms: number;
+  tokens_in: number | null;
+  tokens_out: number | null;
+  cost_usd: number | null;
+  langsmith_trace_url: string | null;
+  intent_question_type: string;
+  intent_complexity: string;
+  intent_domain: string;
+  failure_reasons: Array<Record<string, unknown>>;
+  tool_calls_count: number;
+};
+
+export type EvalRunDetail = {
+  run: EvalRunSummary;
+  results: EvalCaseResultSummary[];
+};
+
+export type EvalCaseLibraryEntry = {
+  case_id: string;
+  intent_question_type: string | null;
+  intent_complexity: string | null;
+  intent_domain: string | null;
+  tags: string[];
+  phrasings_count: number;
+  repeats: number;
+  latest_verdict: string | null;
+  latest_run_id: number | null;
+};
+
+export type EvalCaseDetailRun = {
+  run_id: number;
+  started_at: string;
+  verdicts: Record<string, number>;
+  results: EvalCaseResultSummary[];
+};
+
+export type EvalCaseDetail = {
+  case_id: string;
+  case_yaml_path: string | null;
+  intent_question_type: string | null;
+  intent_complexity: string | null;
+  intent_domain: string | null;
+  tags: string[];
+  runs: EvalCaseDetailRun[];
+};
+
+export type EvalRegression = {
+  case_id: string;
+  latest_verdict: string;
+  latest_run_id: number;
+  prior_verdict: string;
+  prior_run_id: number;
+  direction: "worsened" | "improved";
+};
+
+export type EvalSummary = {
+  total_runs: number;
+  latest_run: EvalRunSummary | null;
+  overall_pass_rate_last_run: number | null;
+  cases_on_disk: number;
+  cases_with_history: number;
 };
 
 // /api/trades/{league_id}

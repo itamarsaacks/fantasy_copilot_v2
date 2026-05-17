@@ -51,3 +51,22 @@ async def get_current_user(
     if user is None or user.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="user not found")
     return user
+
+
+async def require_admin(user: User = Depends(get_current_user)) -> User:
+    """Cookie-auth admin gate.
+
+    Reads ADMIN_USER_IDS env (comma-separated User.id list) and rejects
+    anyone not in the set. Empty list = admin endpoints unreachable via
+    cookie. Used for the eval dashboard (/api/admin/evals/*); the legacy
+    X-Admin-Secret header still protects sync/projection routes for CLI
+    callers.
+    """
+    settings = get_settings()
+    allowed = settings.admin_user_id_set
+    if not allowed or user.id not in allowed:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="admin access required",
+        )
+    return user
