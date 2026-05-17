@@ -44,6 +44,65 @@ export type HealthResponse = {
   as_of_date: string | null;
 };
 
+// /api/league/{league_id}
+export type LeagueMeta = {
+  league_id: number;
+  league_key: string;
+  name: string;
+  season: string;
+  scoring_type: string;
+  num_teams: number;
+  current_week: number | null;
+};
+
+export type TeamStanding = {
+  team_id: number;
+  team_key: string;
+  name: string;
+  manager_name: string | null;
+  logo_url: string | null;
+  is_user_team: boolean;
+  rank: number | null;
+  wins: number | null;
+  losses: number | null;
+  ties: number | null;
+  points_for: number | null;
+  points_against: number | null;
+  number_of_moves: number | null;
+  number_of_trades: number | null;
+  faab_balance: number | null;
+  waiver_priority: number | null;
+  clinched_playoffs: boolean | null;
+  division_id: string | null;
+};
+
+export type ScoringRule = {
+  stat_id: string;
+  abbr: string;
+  display_name: string;
+  modifier: number | null;
+};
+
+export type LeagueSettings = {
+  max_teams: number | null;
+  waiver_type: string | null;
+  waiver_days: string | null;
+  waiver_rule: string | null;
+  waiver_time: string | null;
+  uses_faab: boolean;
+  uses_playoff: boolean;
+  trade_end_date: string | null;
+  max_games_played: number | null;
+  is_highscore: boolean;
+};
+
+export type LeagueResponse = {
+  meta: LeagueMeta;
+  teams: TeamStanding[];
+  scoring: ScoringRule[];
+  settings: LeagueSettings;
+};
+
 // /api/waivers/{league_id}?days_ahead=N
 export type WaiverCandidate = {
   player_id: number;
