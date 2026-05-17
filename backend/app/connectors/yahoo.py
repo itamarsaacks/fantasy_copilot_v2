@@ -93,7 +93,7 @@ async def fetch_user_guid(access_token: str) -> str | None:
     Yahoo no longer reliably returns `xoauth_yahoo_guid` in the token response,
     so we ask Fantasy directly. Returns None if the response shape is unexpected.
     """
-    headers = {"Authorization": f"Bearer {access_token}", "Accept": "application/json"}
+    headers = {"Authorization": f"Bearer {access_token}", "Accept": "application/json", "User-Agent": "fantasy-copilot/1.0"}
     url = f"{FANTASY_API_BASE}/users;use_login=1?format=json"
     async with httpx.AsyncClient(timeout=15) as client:
         resp = await client.get(url, headers=headers)
@@ -116,7 +116,7 @@ async def fetch_nba_leagues(access_token: str) -> list[dict[str, Any]]:
     Output: list of dicts with keys: league_key, name, scoring_type, num_teams,
     current_week, season, settings_raw (the full settings dict from Yahoo).
     """
-    headers = {"Authorization": f"Bearer {access_token}", "Accept": "application/json"}
+    headers = {"Authorization": f"Bearer {access_token}", "Accept": "application/json", "User-Agent": "fantasy-copilot/1.0"}
     url = (
         f"{FANTASY_API_BASE}/users;use_login=1/games;game_keys={NBA_GAME_KEY}/"
         f"leagues;out=settings?format=json"
@@ -175,7 +175,7 @@ async def fetch_teams(access_token: str, league_key: str) -> list[dict[str, Any]
     Output: list of dicts with team_key, team_id_in_league, name, manager_name,
     is_user_team, wins, losses, ties, rank.
     """
-    headers = {"Authorization": f"Bearer {access_token}", "Accept": "application/json"}
+    headers = {"Authorization": f"Bearer {access_token}", "Accept": "application/json", "User-Agent": "fantasy-copilot/1.0"}
     url = f"{FANTASY_API_BASE}/league/{league_key}/teams;out=standings?format=json"
     async with httpx.AsyncClient(timeout=15) as client:
         resp = await client.get(url, headers=headers)
@@ -280,7 +280,7 @@ async def fetch_team_roster(access_token: str, team_key: str) -> list[dict[str, 
     Uses /team/{key}/roster/players;out=... to get percent_owned, ranks,
     draft_analysis inline rather than making a second call per player.
     """
-    headers = {"Authorization": f"Bearer {access_token}", "Accept": "application/json"}
+    headers = {"Authorization": f"Bearer {access_token}", "Accept": "application/json", "User-Agent": "fantasy-copilot/1.0"}
     url = (
         f"{FANTASY_API_BASE}/team/{team_key}/roster/players;"
         f"out=percent_owned,percent_started,ranks,draft_analysis?format=json"
@@ -331,7 +331,7 @@ async def fetch_player_stats(
     if len(player_keys) > 25:
         raise ValueError("max 25 player_keys per call")
 
-    headers = {"Authorization": f"Bearer {access_token}", "Accept": "application/json"}
+    headers = {"Authorization": f"Bearer {access_token}", "Accept": "application/json", "User-Agent": "fantasy-copilot/1.0"}
     keys_csv = ",".join(player_keys)
     stats_segment = f"stats;type={coverage}"
     if coverage == "date":
@@ -390,6 +390,53 @@ def _parse_player_stats(payload: dict[str, Any]) -> dict[str, list[dict[str, Any
     return out
 
 
+async def fetch_league_draft_results(
+    access_token: str, league_key: str
+) -> list[dict[str, Any]]:
+    """Return every draft pick for the league.
+
+    Output: list of {pick, round, team_key, player_key, cost (auction only)}.
+    Needed to seed PlayerOwnershipEvent rows for drafted players — the
+    transactions endpoint only covers post-draft moves, so without this
+    drafted-and-never-moved players have no ownership history at all.
+    """
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Accept": "application/json",
+        "User-Agent": "fantasy-copilot/1.0",
+    }
+    url = f"{FANTASY_API_BASE}/league/{league_key}/draftresults?format=json"
+    async with httpx.AsyncClient(timeout=20) as client:
+        resp = await client.get(url, headers=headers)
+    resp.raise_for_status()
+    return _parse_draft_results(resp.json())
+
+
+def _parse_draft_results(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    try:
+        dr = payload["fantasy_content"]["league"][1]["draft_results"]
+    except (KeyError, IndexError, TypeError):
+        return []
+    if not isinstance(dr, dict):
+        return []
+    count = int(dr.get("count", 0))
+    out: list[dict[str, Any]] = []
+    for i in range(count):
+        pick = dr.get(str(i), {}).get("draft_result")
+        if not isinstance(pick, dict):
+            continue
+        out.append(
+            {
+                "pick": pick.get("pick"),
+                "round": pick.get("round"),
+                "team_key": pick.get("team_key"),
+                "player_key": pick.get("player_key"),
+                "cost": pick.get("cost"),
+            }
+        )
+    return out
+
+
 async def fetch_league_transactions(
     access_token: str,
     league_key: str,
@@ -417,7 +464,7 @@ async def fetch_league_transactions(
 
     Pagination: Yahoo caps responses, we iterate `start` until empty.
     """
-    headers = {"Authorization": f"Bearer {access_token}", "Accept": "application/json"}
+    headers = {"Authorization": f"Bearer {access_token}", "Accept": "application/json", "User-Agent": "fantasy-copilot/1.0"}
     out: list[dict[str, Any]] = []
     async with httpx.AsyncClient(timeout=20) as client:
         for page in range(max_pages):
@@ -519,7 +566,7 @@ async def fetch_league_free_agents(
     access_token: str, league_key: str, page_size: int = 25
 ) -> list[dict[str, Any]]:
     """Paginated FA fetch. Returns all players with status=A in the league."""
-    headers = {"Authorization": f"Bearer {access_token}", "Accept": "application/json"}
+    headers = {"Authorization": f"Bearer {access_token}", "Accept": "application/json", "User-Agent": "fantasy-copilot/1.0"}
     out: list[dict[str, Any]] = []
     start = 0
     while True:

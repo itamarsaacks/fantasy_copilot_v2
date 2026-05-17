@@ -27,21 +27,123 @@ from app.services.yahoo_auth import get_fresh_access_token
 log = logging.getLogger(__name__)
 
 
+async def _sync_draft(
+    db: AsyncSession, *, access_token: str, league: League
+) -> int:
+    """Pull the league's draft results and write an "add" PlayerOwnershipEvent
+    per pick at the league's draft_time.
+
+    Without this, drafted players who were never traded have no history
+    at all — the transactions endpoint only covers post-draft moves.
+    Idempotent via the transaction_key unique constraint (we use a
+    synthetic key 'draft-<league_key>-pick<N>').
+    """
+    picks = await yahoo_client.fetch_league_draft_results(
+        access_token, league.league_key
+    )
+    if not picks:
+        return 0
+
+    draft_ts = (league.settings_json or {}).get("draft_time")
+    try:
+        draft_at = datetime.fromtimestamp(int(draft_ts), tz=timezone.utc)
+    except (TypeError, ValueError):
+        # Fallback to a synthetic "early in season" date so the events
+        # still anchor before any post-draft trade.
+        draft_at = datetime(2025, 10, 1, tzinfo=timezone.utc)
+
+    player_keys = {p["player_key"] for p in picks if p.get("player_key")}
+    team_keys = {p["team_key"] for p in picks if p.get("team_key")}
+    players = (
+        {
+            p.yahoo_player_key: p.id
+            for p in (
+                await db.execute(
+                    select(Player).where(Player.yahoo_player_key.in_(player_keys))
+                )
+            ).scalars().all()
+        }
+        if player_keys
+        else {}
+    )
+    teams = (
+        {
+            t.team_key: t.id
+            for t in (
+                await db.execute(
+                    select(Team).where(
+                        Team.league_id == league.id, Team.team_key.in_(team_keys)
+                    )
+                )
+            ).scalars().all()
+        }
+        if team_keys
+        else {}
+    )
+
+    rows: list[dict[str, Any]] = []
+    for pick in picks:
+        player_id = players.get(pick.get("player_key") or "")
+        team_id = teams.get(pick.get("team_key") or "")
+        if not player_id or not team_id:
+            continue
+        rows.append(
+            {
+                "league_id": league.id,
+                "player_id": player_id,
+                "occurred_at": draft_at,
+                "event_type": "add",
+                "from_team_id": None,
+                "to_team_id": team_id,
+                "transaction_key": f"draft-{league.league_key}-pick{pick.get('pick')}",
+                "raw": {
+                    "tx_type": "draft",
+                    "round": pick.get("round"),
+                    "pick": pick.get("pick"),
+                    "cost": pick.get("cost"),
+                },
+            }
+        )
+    if not rows:
+        return 0
+    stmt = (
+        pg_insert(PlayerOwnershipEvent)
+        .values(rows)
+        .on_conflict_do_nothing(
+            index_elements=["league_id", "player_id", "transaction_key"]
+        )
+    )
+    res = await db.execute(stmt)
+    await db.commit()
+    return res.rowcount if res.rowcount is not None else 0
+
+
 async def sync_league_transactions(
     db: AsyncSession, *, user: User, league: League
 ) -> dict[str, int]:
-    """Pull all transactions for this league and upsert ownership events.
+    """Pull draft results AND all transactions for this league, upserting
+    ownership events for both.
 
     Returns counts for observability:
-      {fetched: N, players_seen: N, events_written: N}
+      {fetched: N, players_seen: N, events_written: N, draft_events: N}
     """
     access_token = await get_fresh_access_token(db, user)
+
+    # 1. Draft (initial team assignments)
+    draft_events = await _sync_draft(db, access_token=access_token, league=league)
+
+    # 2. Post-draft transactions (adds / drops / trades)
     raw_txns = await yahoo_client.fetch_league_transactions(
         access_token, league.league_key
     )
 
     if not raw_txns:
-        return {"fetched": 0, "players_seen": 0, "events_written": 0}
+        return {
+            "fetched": 0,
+            "players_seen": 0,
+            "events_written": 0,
+            "draft_events": draft_events,
+        }
 
     # Build lookup maps: player_key → player_id, team_key → team_id
     player_keys = {
@@ -150,4 +252,5 @@ async def sync_league_transactions(
         "fetched": len(raw_txns),
         "players_seen": len(players_seen),
         "events_written": events_written,
+        "draft_events": draft_events,
     }
