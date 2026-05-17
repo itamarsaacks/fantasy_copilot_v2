@@ -11,6 +11,7 @@ import type {
   PlayersResponse,
 } from "@/lib/api-types";
 import { cn } from "@/lib/utils";
+import { PlayerDetailDrawer } from "@/components/players/player-detail-drawer";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -101,6 +102,7 @@ function statByCol(s: PlayerSeasonStats, col: SortBy): number | null {
 
 export function PlayersView() {
   const { leagueId, league, isLoading: leagueLoading } = useActiveLeague();
+  const [openPlayer, setOpenPlayer] = useState<{ id: number; name: string } | null>(null);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [position, setPosition] = useState<string | null>(null);
@@ -265,6 +267,7 @@ export function PlayersView() {
               p={p}
               highlightSort={sortBy}
               isFetchingRefresh={playersQ.isFetching && !playersQ.isLoading}
+              onClick={() => setOpenPlayer({ id: p.id, name: p.name })}
             />
           ))}
         </div>
@@ -282,6 +285,14 @@ export function PlayersView() {
           </div>
         )}
       </section>
+
+      <PlayerDetailDrawer
+        open={openPlayer !== null}
+        onOpenChange={(o) => !o && setOpenPlayer(null)}
+        leagueId={leagueId}
+        playerId={openPlayer?.id ?? null}
+        playerName={openPlayer?.name}
+      />
     </div>
   );
 }
@@ -319,10 +330,12 @@ function PlayerRow({
   p,
   highlightSort,
   isFetchingRefresh,
+  onClick,
 }: {
   p: PlayerView;
   highlightSort: SortBy;
   isFetchingRefresh: boolean;
+  onClick: () => void;
 }) {
   const s = p.season_stats;
   const tone = statusTone(p.status);
@@ -340,8 +353,9 @@ function PlayerRow({
 
   return (
     <div
+      onClick={onClick}
       className={cn(
-        "border-b border-foreground/5 px-3 py-3 last:border-b-0 transition hover:bg-foreground/[0.02] md:grid md:grid-cols-[minmax(0,1fr)_repeat(6,3.5rem)_5rem_4rem] md:items-center md:gap-3 md:px-4",
+        "cursor-pointer border-b border-foreground/5 px-3 py-3 last:border-b-0 transition hover:bg-foreground/[0.02] md:grid md:grid-cols-[minmax(0,1fr)_repeat(6,3.5rem)_5rem_4rem] md:items-center md:gap-3 md:px-4",
         isFetchingRefresh && "opacity-80",
       )}
     >

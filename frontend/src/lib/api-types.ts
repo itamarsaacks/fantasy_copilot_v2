@@ -45,6 +45,88 @@ export type HealthResponse = {
   as_of_date: string | null;
 };
 
+// /api/players/{league_id}/{player_id}
+export type PlayerDetailMeta = {
+  id: number;
+  yahoo_player_key: string;
+  name: string;
+  nba_team: string | null;
+  eligible_positions: string[];
+  primary_position: string | null;
+  status: string | null;
+  status_full: string | null;
+  injury_note: string | null;
+  image_url: string | null;
+  percent_owned: number | null;
+  percent_started: number | null;
+};
+
+export type PlayerDetailOwnership = {
+  state: "free_agent" | "waivers" | "on_team" | "my_team";
+  team_name: string | null;
+  waiver_status: string | null;
+};
+
+export type PlayerDetailDateRange = {
+  start: string;
+  end: string;
+  today: string;
+};
+
+export type PlayerGameLogRow = {
+  date: string;
+  opponent: string | null;
+  home: boolean | null;
+  is_back_to_back: boolean;
+  minutes: number | null;
+  stats: Record<string, number>;
+  fantasy_points: number | null;
+};
+
+export type PlayerStatsAggregate = {
+  games_played: number;
+  totals: Record<string, number>;
+  per_game: Record<string, number>;
+  fantasy_points_total: number | null;
+  fantasy_points_per_game: number | null;
+  games_log: PlayerGameLogRow[];
+};
+
+export type PlayerProjectedGameRow = {
+  date: string;
+  opponent: string;
+  home: boolean;
+  is_back_to_back: boolean;
+  projected_fps: number | null;
+};
+
+export type PlayerProjectionAggregate = {
+  games_projected: number;
+  fantasy_points_total: number | null;
+  fantasy_points_per_game: number | null;
+  games_log: PlayerProjectedGameRow[];
+};
+
+export type PlayerNewsItem = {
+  title: string;
+  body: string | null;
+  url: string | null;
+  kind: string;
+  confidence: number | null;
+  source: string;
+  published_at: string;
+};
+
+export type PlayerDetailResponse = {
+  player: PlayerDetailMeta;
+  ownership: PlayerDetailOwnership;
+  date_range: PlayerDetailDateRange;
+  base_projection_per_game: number | null;
+  actual: PlayerStatsAggregate;
+  projection: PlayerProjectionAggregate;
+  news: PlayerNewsItem[];
+};
+
 // /api/admin/evals/*
 export type EvalRunSummary = {
   id: number;
