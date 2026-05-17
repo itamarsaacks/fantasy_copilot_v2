@@ -44,14 +44,14 @@ export type HealthResponse = {
   as_of_date: string | null;
 };
 
-// /api/team/{league_id}
-export type NextGame = {
+// /api/team/{league_id}?date=YYYY-MM-DD
+export type GameOnDate = {
   date: string;
   opponent: string;
   home: boolean;
   status: string;
   tipoff_at: string | null;
-  is_today: boolean;
+  is_back_to_back: boolean;
 };
 
 export type SeasonStats = {
@@ -73,15 +73,13 @@ export type TeamPlayerView = {
   status_full: string | null;
   injury_note: string | null;
   projected_fps_per_game: number | null;
-  games_this_week: number;
-  back_to_back_count: number;
-  next_game: NextGame | null;
+  projected_fps_on_date: number | null;
+  game_on_date: GameOnDate | null;
   season_stats: SeasonStats;
 };
 
 export type RosterBucket = {
   label: string;
-  total_projected_fps_per_game: number;
   players: TeamPlayerView[];
 };
 
@@ -90,8 +88,8 @@ export type TeamResponse = {
   league_name: string;
   team_name: string;
   manager_name: string | null;
+  requested_date: string;
   starters: RosterBucket;
   bench: RosterBucket;
   ir: RosterBucket;
-  total_projected_fps_per_game: number;
 };
