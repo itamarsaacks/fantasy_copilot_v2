@@ -4,7 +4,6 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import type {
-  OwnershipInterval,
   OwnershipTimelineResponse,
   PlayerDetailResponse,
   PlayerGameLogRow,
@@ -18,6 +17,7 @@ import {
   SheetDescription,
 } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
+import { HorizontalOwnershipTimeline } from "@/components/players/ownership-timeline";
 
 // ---------------------------------------------------------------------------
 // Date helpers
@@ -202,70 +202,6 @@ function StatCell({
         {value}
       </div>
     </div>
-  );
-}
-
-function OwnershipTimeline({
-  intervals,
-  onPickRange,
-}: {
-  intervals: OwnershipInterval[];
-  onPickRange: (start: string, end: string) => void;
-}) {
-  if (intervals.length === 0) {
-    return (
-      <p className="text-xs text-muted-foreground">
-        No ownership changes recorded — drafted to current team and never moved,
-        or transactions haven&apos;t been synced yet.
-      </p>
-    );
-  }
-  return (
-    <ol className="space-y-1.5">
-      {intervals.map((iv, i) => {
-        const start = iv.started_at.slice(0, 10);
-        const end = iv.ended_at ? iv.ended_at.slice(0, 10) : todayISO();
-        const endLabel = iv.ended_at ? fmtDateShort(iv.ended_at) : "now";
-        return (
-          <li
-            key={i}
-            className={cn(
-              "flex flex-wrap items-center gap-2 rounded-md border px-3 py-2 text-xs",
-              iv.is_user_team
-                ? "border-orange-500/40 bg-orange-500/[0.08]"
-                : iv.team_id
-                ? "border-foreground/15 bg-card"
-                : "border-blue-500/30 bg-blue-500/[0.05]",
-            )}
-          >
-            <span className="text-muted-foreground">
-              {fmtDateShort(iv.started_at)} → {endLabel}
-            </span>
-            <span
-              className={cn(
-                "font-semibold",
-                iv.is_user_team && "text-orange-400",
-                !iv.team_id && "text-blue-400",
-              )}
-            >
-              {iv.team_name ?? "Free agent"}
-            </span>
-            {iv.is_user_team && (
-              <span className="rounded-full border border-orange-500/40 bg-orange-500/20 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-orange-300">
-                You
-              </span>
-            )}
-            <button
-              type="button"
-              onClick={() => onPickRange(start, end)}
-              className="ml-auto rounded-md border border-foreground/20 bg-background px-2 py-0.5 text-[10px] font-medium hover:bg-foreground/5"
-            >
-              Use as range
-            </button>
-          </li>
-        );
-      })}
-    </ol>
   );
 }
 
@@ -641,21 +577,22 @@ export function PlayerDetailDrawer({
           )}
 
           {tab === "history" && (
-            <section className="space-y-2">
+            <section className="space-y-3">
               <p className="text-[11px] text-muted-foreground">
-                Ownership timeline in this league. Click &quot;Use as range&quot;
-                on any interval to load the Stats tab with that period selected
-                — useful for &quot;how did he perform while on my team?&quot;
+                Click any segment to load that period as the Stats tab&apos;s
+                date range — useful for &quot;how did he perform while on my
+                team?&quot;
               </p>
               {ownershipQ.isLoading && (
                 <p className="text-xs text-muted-foreground">
-                  Loading… (first load can take ~20s while we backfill the league&apos;s
-                  full transaction history)
+                  Loading… (first load may take ~20s while we backfill the
+                  league&apos;s full transaction + draft history)
                 </p>
               )}
               {ownershipQ.isSuccess && (
-                <OwnershipTimeline
+                <HorizontalOwnershipTimeline
                   intervals={ownershipQ.data.intervals}
+                  selectedRange={{ start, end }}
                   onPickRange={(s, e) => {
                     onPickRange(s, e);
                     setTab("stats");
