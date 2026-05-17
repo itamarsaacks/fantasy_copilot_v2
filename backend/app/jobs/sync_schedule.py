@@ -122,6 +122,65 @@ def _safe_int(v: Any) -> int | None:
         return None
 
 
+async def backfill_schedule(
+    start: date, end: date, *, concurrent: int = 6
+) -> dict[str, int]:
+    """Pull NBA games for every date in [start, end] inclusive.
+
+    Used once per season to seed nba_schedule with historic regular-season
+    games. ESPN's scoreboard is unauthed and date-addressable so this is
+    cheap. Idempotent via the game_id unique constraint.
+    """
+    import asyncio as _asyncio
+
+    if start > end:
+        return {"fetched": 0, "upserted": 0}
+    days: list[date] = []
+    cursor = start
+    while cursor <= end:
+        days.append(cursor)
+        cursor += timedelta(days=1)
+
+    fetched = 0
+    upserted = 0
+    sem = _asyncio.Semaphore(concurrent)
+
+    async with httpx.AsyncClient() as client:
+        async with SessionLocal() as db:
+            async def _one(d: date) -> list[dict[str, Any]]:
+                async with sem:
+                    try:
+                        return await fetch_day(client, d)
+                    except Exception as exc:  # noqa: BLE001
+                        log.warning("ESPN backfill failed for %s: %s", d, exc)
+                        return []
+
+            results = await _asyncio.gather(*[_one(d) for d in days])
+
+            for rows in results:
+                fetched += len(rows)
+                for row in rows:
+                    stmt = (
+                        pg_insert(NbaSchedule)
+                        .values(**row)
+                        .on_conflict_do_update(
+                            index_elements=["game_id"],
+                            set_={
+                                "status": row["status"],
+                                "tipoff_at": row["tipoff_at"],
+                                "home_score": row["home_score"],
+                                "away_score": row["away_score"],
+                                "updated_at": datetime.now(timezone.utc),
+                            },
+                        )
+                    )
+                    await db.execute(stmt)
+                    upserted += 1
+            await db.commit()
+    log.info("schedule backfill done: fetched=%d upserted=%d days=%d", fetched, upserted, len(days))
+    return {"fetched": fetched, "upserted": upserted, "days": len(days)}
+
+
 async def sync_schedule(lookahead_days: int = LOOKAHEAD_DAYS) -> dict[str, int]:
     """Pull `lookahead_days` of NBA games from ESPN and upsert.
 
