@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useQuery, keepPreviousData } from "@tanstack/react-query";
+import { useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { useActiveLeague } from "@/lib/hooks/use-active-league";
 import { api } from "@/lib/api";
 import type {
@@ -104,10 +104,12 @@ function statByCol(s: PlayerSeasonStats, col: SortBy): number | null {
 const COMPARE_MAX = 4;
 
 export function PlayersView() {
+  const queryClient = useQueryClient();
   const { leagueId, league, isLoading: leagueLoading } = useActiveLeague();
   const [openPlayer, setOpenPlayer] = useState<{ id: number; name: string } | null>(null);
-  // Compare cart — player ids selected via the row checkbox. Cleared on
-  // league switch. Capped at COMPARE_MAX so the compare view stays readable.
+  // Compare cart — player ids selected via the row checkbox or per-row
+  // Compare button. Cleared on league switch. Capped at COMPARE_MAX so
+  // the compare view stays readable.
   const [compareIds, setCompareIds] = useState<number[]>([]);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -139,6 +141,30 @@ export function PlayersView() {
       if (prev.includes(id)) return prev.filter((x) => x !== id);
       if (prev.length >= COMPARE_MAX) return prev;
       return [...prev, id];
+    });
+  }
+
+  // Warm the player-detail cache on hover so clicking feels instant.
+  // Uses the default 30-day window the drawer opens with.
+  function prefetchDetail(playerId: number) {
+    if (!leagueId) return;
+    const end = new Date();
+    const start = new Date();
+    start.setDate(start.getDate() - 30);
+    const toISO = (d: Date) => {
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, "0");
+      const day = String(d.getDate()).padStart(2, "0");
+      return `${y}-${m}-${day}`;
+    };
+    const s = toISO(start);
+    const e = toISO(end);
+    queryClient.prefetchQuery({
+      queryKey: ["player-detail", leagueId, playerId, s, e],
+      queryFn: () =>
+        api(`/api/players/${leagueId}/${playerId}?start=${s}&end=${e}`),
+      // Don't re-fetch on hover if we already have it
+      staleTime: 60 * 1000,
     });
   }
 
@@ -289,6 +315,7 @@ export function PlayersView() {
               highlightSort={sortBy}
               isFetchingRefresh={playersQ.isFetching && !playersQ.isLoading}
               onClick={() => setOpenPlayer({ id: p.id, name: p.name })}
+              onHover={() => prefetchDetail(p.id)}
               compareSelected={compareIds.includes(p.id)}
               compareDisabled={
                 !compareIds.includes(p.id) && compareIds.length >= COMPARE_MAX
@@ -430,6 +457,7 @@ function PlayerRow({
   highlightSort,
   isFetchingRefresh,
   onClick,
+  onHover,
   compareSelected,
   compareDisabled,
   onToggleCompare,
@@ -438,6 +466,7 @@ function PlayerRow({
   highlightSort: SortBy;
   isFetchingRefresh: boolean;
   onClick: () => void;
+  onHover: () => void;
   compareSelected: boolean;
   compareDisabled: boolean;
   onToggleCompare: () => void;
@@ -459,8 +488,9 @@ function PlayerRow({
   return (
     <div
       onClick={onClick}
+      onMouseEnter={onHover}
       className={cn(
-        "cursor-pointer border-b border-foreground/5 px-3 py-3 last:border-b-0 transition hover:bg-foreground/[0.02] md:grid md:grid-cols-[1.5rem_minmax(0,1fr)_repeat(6,3.5rem)_5rem_4rem] md:items-center md:gap-3 md:px-4",
+        "group/row cursor-pointer border-b border-foreground/5 px-3 py-3 last:border-b-0 transition hover:bg-foreground/[0.02] md:grid md:grid-cols-[1.5rem_minmax(0,1fr)_repeat(6,3.5rem)_5rem_4rem] md:items-center md:gap-3 md:px-4",
         isFetchingRefresh && "opacity-80",
         compareSelected && "bg-orange-500/[0.04]",
       )}
@@ -507,6 +537,33 @@ function PlayerRow({
           >
             {own.label}
           </span>
+          {/* Hover-revealed Compare button — discoverability counterpart
+              to the checkbox on the left. Stops propagation so it doesn't
+              also open the drawer. */}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (!compareDisabled || compareSelected) onToggleCompare();
+            }}
+            disabled={compareDisabled}
+            className={cn(
+              "ml-auto inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[10px] font-medium opacity-0 transition group-hover/row:opacity-100",
+              compareSelected
+                ? "border-orange-500/60 bg-orange-500/15 text-orange-300 opacity-100"
+                : "border-foreground/15 bg-background hover:bg-foreground/5",
+              compareDisabled && "cursor-not-allowed opacity-30",
+            )}
+            title={
+              compareSelected
+                ? "Remove from comparison"
+                : compareDisabled
+                ? "Compare cart is full (max 4)"
+                : "Add to comparison"
+            }
+          >
+            {compareSelected ? "✓ Compare" : "+ Compare"}
+          </button>
         </div>
         <div className="mt-0.5 text-xs text-muted-foreground">
           {p.nba_team ?? "—"} · {p.eligible_positions.join(", ") || "—"}
