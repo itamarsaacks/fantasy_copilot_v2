@@ -44,6 +44,41 @@ export type HealthResponse = {
   as_of_date: string | null;
 };
 
+// /api/waivers/{league_id}?days_ahead=N
+export type WaiverCandidate = {
+  player_id: number;
+  name: string;
+  nba_team: string | null;
+  eligible_positions: string[];
+  status: string | null;
+  status_full: string | null;
+  injury_note: string | null;
+  projected_fps_per_game: number | null;
+  games_in_window: number;
+  back_to_back_count: number;
+  availability_factor: number;
+  window_fps: number | null;
+  waiver_status: string | null;
+  selected_position: string | null;
+};
+
+export type SuggestedSwap = {
+  pickup: WaiverCandidate;
+  drop: WaiverCandidate;
+  delta_window_fps: number;
+  delta_per_game: number;
+};
+
+export type WaiversResponse = {
+  league_id: number;
+  window_days: number;
+  window_start: string;
+  window_end: string;
+  pickups: WaiverCandidate[];
+  drops: WaiverCandidate[];
+  suggested_swaps: SuggestedSwap[];
+};
+
 // /api/team/{league_id}?date=YYYY-MM-DD
 export type GameOnDate = {
   date: string;
