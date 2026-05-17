@@ -1,11 +1,5 @@
-import { Placeholder } from "@/components/common/placeholder";
+import { TradesView } from "@/components/trades/trades-view";
 
 export default function TradesPage() {
-  return (
-    <Placeholder
-      phase="Phase 9"
-      title="Trades"
-      description="Trade analyzer (any players) and trade suggester (realistic offers tied to a single trading partner). Coming after the data foundation lands."
-    />
-  );
+  return <TradesView />;
 }

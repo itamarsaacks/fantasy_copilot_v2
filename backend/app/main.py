@@ -35,6 +35,7 @@ from app.api.routes import conversations as conversation_routes
 from app.api.routes import league as league_routes
 from app.api.routes import players as players_routes
 from app.api.routes import team as team_routes
+from app.api.routes import trades as trades_routes
 from app.api.routes import waivers as waivers_routes
 from app.config import get_settings
 from app.db.engine import SessionLocal, engine
@@ -129,6 +130,7 @@ app.include_router(team_routes.router)
 app.include_router(players_routes.router)
 app.include_router(waivers_routes.router)
 app.include_router(league_routes.router)
+app.include_router(trades_routes.router)
 
 
 @app.get("/health")

@@ -44,6 +44,34 @@ export type HealthResponse = {
   as_of_date: string | null;
 };
 
+// /api/trades/{league_id}
+export type TradePlayer = {
+  player_id: number;
+  name: string;
+  nba_team: string | null;
+  eligible_positions: string[];
+  selected_position: string | null;
+  status: string | null;
+  injury_note: string | null;
+  projected_fps_per_game: number | null;
+};
+
+export type TradeTeam = {
+  team_id: number;
+  name: string;
+  manager_name: string | null;
+  is_user_team: boolean;
+  players: TradePlayer[];
+};
+
+export type TradesBuilderResponse = {
+  league_id: number;
+  league_name: string;
+  scoring_type: string;
+  my_team: TradeTeam | null;
+  partners: TradeTeam[];
+};
+
 // /api/league/{league_id}
 export type LeagueMeta = {
   league_id: number;
