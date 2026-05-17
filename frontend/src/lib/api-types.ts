@@ -85,6 +85,56 @@ export type RosterBucket = {
   players: TeamPlayerView[];
 };
 
+// /api/players/{league_id}
+export type PlayerOwnershipState =
+  | "free_agent"
+  | "waivers"
+  | "on_team"
+  | "my_team";
+
+export type PlayerOwnership = {
+  state: PlayerOwnershipState;
+  team_name: string | null;
+  waiver_status: string | null;
+};
+
+export type PlayerSeasonStats = {
+  gp: number | null;
+  pts: number | null;
+  reb: number | null;
+  ast: number | null;
+  stl: number | null;
+  blk: number | null;
+  tov: number | null;
+};
+
+export type PlayerView = {
+  id: number;
+  name: string;
+  nba_team: string | null;
+  eligible_positions: string[];
+  primary_position: string | null;
+  status: string | null;
+  status_full: string | null;
+  injury_note: string | null;
+  image_url: string | null;
+  percent_owned: number | null;
+  percent_started: number | null;
+  projected_fps_per_game: number | null;
+  season_fps_per_game: number | null;
+  season_stats: PlayerSeasonStats;
+  ownership: PlayerOwnership;
+};
+
+export type PlayersResponse = {
+  league_id: number;
+  total: number;
+  limit: number;
+  offset: number;
+  available_positions: string[];
+  items: PlayerView[];
+};
+
 export type TeamResponse = {
   league_id: number;
   league_name: string;
