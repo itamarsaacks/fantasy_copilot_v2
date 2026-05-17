@@ -21,6 +21,7 @@ from pydantic import BaseModel
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.connectors import yahoo as yahoo_client
 from app.db.engine import get_session
 from app.db.models import (
     League,
@@ -31,6 +32,12 @@ from app.db.models import (
     RosterPlayer,
     Team,
     User,
+)
+from app.engine.projection import (
+    CATEGORY_LEAGUE_TYPES,
+    POINTS_LEAGUE_TYPES,
+    _CategoryValuator,
+    _PointsValuator,
 )
 from app.security import get_current_user
 
@@ -68,8 +75,10 @@ SLOT_ORDER = [
 _AVAIL_OUT = {"OUT", "O", "IL", "IL-LT", "NA", "SUSP"}
 _AVAIL_QUESTIONABLE = {"INJ", "GTD", "DTD", "Q"}
 
-# How far back/forward the date picker is allowed to query.
-_MAX_DATE_OFFSET_DAYS = 30
+# How far the date picker is allowed to query.
+# Past: a full season of history. Future: ~3 weeks of upcoming schedule.
+_MAX_PAST_DAYS = 365
+_MAX_FUTURE_DAYS = 21
 
 
 def _slot_weight(slot: str | None) -> int:
@@ -165,6 +174,8 @@ class RosterPlayerView(BaseModel):
     injury_note: str | None
     projected_fps_per_game: float | None  # season avg, unchanged
     projected_fps_on_date: float | None  # Stage-1 per-date projection (null if no game)
+    actual_fps_on_date: float | None  # past dates only — what the player actually scored
+    actual_stats: SeasonStats | None  # past dates only — that game's stat line
     game_on_date: GameOnDate | None
     season_stats: SeasonStats
 
@@ -180,6 +191,7 @@ class TeamResponse(BaseModel):
     team_name: str
     manager_name: str | None
     requested_date: str
+    is_past_date: bool
     starters: RosterBucket
     bench: RosterBucket
     ir: RosterBucket
@@ -193,11 +205,16 @@ def _parse_date(value: str | None) -> date_type:
     except ValueError:
         raise HTTPException(status_code=400, detail=f"invalid date '{value}', expected YYYY-MM-DD")
     today = datetime.now(timezone.utc).date()
-    offset = abs((d - today).days)
-    if offset > _MAX_DATE_OFFSET_DAYS:
+    delta = (d - today).days
+    if delta > _MAX_FUTURE_DAYS:
         raise HTTPException(
             status_code=400,
-            detail=f"date must be within ±{_MAX_DATE_OFFSET_DAYS} days of today",
+            detail=f"date can't be more than {_MAX_FUTURE_DAYS} days in the future",
+        )
+    if -delta > _MAX_PAST_DAYS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"date can't be more than {_MAX_PAST_DAYS} days in the past",
         )
     return d
 
@@ -288,6 +305,73 @@ async def get_team(
             games_by_team.setdefault(g.home_team_abbr, []).append(g)
             games_by_team.setdefault(g.away_team_abbr, []).append(g)
 
+    # ------------------------------------------------------------------
+    # Past dates: fetch what the players actually did from Yahoo
+    # ------------------------------------------------------------------
+    today = datetime.now(timezone.utc).date()
+    is_past = target_date < today
+    actuals_by_player_id: dict[int, tuple[SeasonStats, float | None]] = {}
+
+    if is_past and player_ids:
+        valuator = None
+        if league.scoring_type in POINTS_LEAGUE_TYPES:
+            valuator = _PointsValuator.from_settings(league.settings_json)
+        elif league.scoring_type in CATEGORY_LEAGUE_TYPES:
+            valuator = _CategoryValuator.from_settings(league.settings_json)
+
+        player_keys = [p.yahoo_player_key for _, p in roster_rows if p.yahoo_player_key]
+        id_by_key = {p.yahoo_player_key: p.id for _, p in roster_rows if p.yahoo_player_key}
+        # Yahoo caps at 25 keys per call
+        try:
+            raw: dict[str, list[dict[str, Any]]] = {}
+            for i in range(0, len(player_keys), 25):
+                chunk = player_keys[i : i + 25]
+                batch = await yahoo_client.fetch_player_stats(
+                    user.access_token,
+                    chunk,
+                    coverage="date",
+                    date=target_date.isoformat(),
+                )
+                raw.update(batch)
+        except Exception as exc:  # noqa: BLE001
+            # Yahoo down or token expired — fall back to projection view.
+            raw = {}
+
+        for pkey, stat_rows in raw.items():
+            player_id = id_by_key.get(pkey)
+            if player_id is None:
+                continue
+            stats_map: dict[str, float] = {}
+            for row in stat_rows:
+                try:
+                    stats_map[str(row["stat_id"])] = float(row.get("value") or 0)
+                except (TypeError, ValueError):
+                    continue
+            # If the player didn't play that day, Yahoo returns zeros for all
+            # stats. Treat a zero-line as "no game" — distinguished from a
+            # real DNP by whether the team had a game (handled later).
+            if not stats_map:
+                continue
+            actual_fps: float | None = None
+            if valuator is not None:
+                # Treat per-date stats as a "season total" through the
+                # valuator (it just multiplies modifiers × values; per-date
+                # totals × modifiers = that date's fantasy points).
+                fps, _components = valuator.season_total(stats_map)
+                actual_fps = round(fps, 2) if fps is not None else None
+            actuals_by_player_id[player_id] = (
+                SeasonStats(
+                    gp=int(stats_map.get(GP_STAT_ID, 0)) or None,
+                    pts=stats_map.get("12"),
+                    reb=stats_map.get("15"),
+                    ast=stats_map.get("16"),
+                    stl=stats_map.get("17"),
+                    blk=stats_map.get("18"),
+                    tov=stats_map.get("19"),
+                ),
+                actual_fps,
+            )
+
     buckets: dict[str, list[RosterPlayerView]] = {
         "starters": [],
         "bench": [],
@@ -341,6 +425,10 @@ async def get_team(
             tov=_per_game("19"),
         )
 
+        actual_pair = actuals_by_player_id.get(p.id)
+        actual_stats_view = actual_pair[0] if actual_pair else None
+        actual_fps = actual_pair[1] if actual_pair else None
+
         view = RosterPlayerView(
             name=p.full_name,
             nba_team=p.nba_team_abbr,
@@ -351,6 +439,8 @@ async def get_team(
             injury_note=p.injury_note,
             projected_fps_per_game=round(base_pg, 2) if base_pg is not None else None,
             projected_fps_on_date=date_proj,
+            actual_fps_on_date=actual_fps,
+            actual_stats=actual_stats_view,
             game_on_date=game_on_date,
             season_stats=season,
         )
@@ -367,6 +457,7 @@ async def get_team(
         team_name=my_team.name,
         manager_name=my_team.manager_name,
         requested_date=target_date.isoformat(),
+        is_past_date=is_past,
         starters=RosterBucket(label="Starters", players=buckets["starters"]),
         bench=RosterBucket(label="Bench", players=buckets["bench"]),
         ir=RosterBucket(label="Injured Reserve", players=buckets["ir"]),

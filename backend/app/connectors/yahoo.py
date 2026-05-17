@@ -304,6 +304,7 @@ async def fetch_player_stats(
     access_token: str,
     player_keys: list[str],
     coverage: str = "season",
+    date: str | None = None,
 ) -> dict[str, list[dict[str, Any]]]:
     """Fetch raw NBA stats for a batch of players (max 25 player_keys per call).
 
@@ -315,6 +316,10 @@ async def fetch_player_stats(
     Args:
       player_keys: up to 25 player_keys.
       coverage: 'season' | 'lastweek' | 'lastmonth' | 'date'.
+      date: required when coverage='date' — Yahoo wants YYYY-MM-DD as a
+        path segment, not a query param. If a player has no game that
+        day, Yahoo returns empty stats for them (we surface that as no
+        actual_stats on the team endpoint).
 
     Returns: {player_key: [{stat_id, value}, ...]}.
 
@@ -328,10 +333,12 @@ async def fetch_player_stats(
 
     headers = {"Authorization": f"Bearer {access_token}", "Accept": "application/json"}
     keys_csv = ",".join(player_keys)
-    url = (
-        f"{FANTASY_API_BASE}/players;player_keys={keys_csv}/"
-        f"stats;type={coverage}?format=json"
-    )
+    stats_segment = f"stats;type={coverage}"
+    if coverage == "date":
+        if not date:
+            raise ValueError("coverage='date' requires a date arg (YYYY-MM-DD)")
+        stats_segment = f"{stats_segment};date={date}"
+    url = f"{FANTASY_API_BASE}/players;player_keys={keys_csv}/{stats_segment}?format=json"
     async with httpx.AsyncClient(timeout=20) as client:
         resp = await client.get(url, headers=headers)
     resp.raise_for_status()

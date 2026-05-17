@@ -229,6 +229,7 @@ function StatCell({ label, value }: { label: string; value: number | null }) {
 function PlayerRow({
   p,
   effectiveSlot,
+  isPast,
   isSwapSource,
   isSwapCandidate,
   isModified,
@@ -238,6 +239,7 @@ function PlayerRow({
 }: {
   p: TeamPlayerView;
   effectiveSlot: string | null;
+  isPast: boolean;
   isSwapSource: boolean;
   isSwapCandidate: boolean;
   isModified: boolean;
@@ -246,7 +248,13 @@ function PlayerRow({
   onClickRow: () => void;
 }) {
   const tone = statusTone(p.status);
-  const s = p.season_stats;
+  // On past dates, prefer the actual-game stat line. If we have no actuals
+  // (player wasn't on a team that played, or Yahoo returned nothing) we
+  // fall back to the season averages so the row isn't blank.
+  const usingActuals = isPast && p.actual_stats !== null;
+  const s = usingActuals && p.actual_stats ? p.actual_stats : p.season_stats;
+  const rightNumber = isPast ? p.actual_fps_on_date : p.projected_fps_on_date;
+  const rightLabel = isPast ? "Actual" : "Proj";
   const showHighlight = isSwapSource || isSwapCandidate;
   const clickable = isSwapSource || isSwapCandidate || swapDisabledReason === null;
 
@@ -328,29 +336,30 @@ function PlayerRow({
         </div>
         <div className="w-16 border-l border-foreground/10 pl-3 text-right">
           <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
-            Proj
+            {rightLabel}
           </div>
           <div className="text-base font-bold tabular-nums">
-            {formatFps(p.projected_fps_on_date)}
+            {formatFps(rightNumber)}
           </div>
         </div>
       </div>
 
-      {/* Mobile: just per-date proj */}
+      {/* Mobile: just the right-side number */}
       <div className="md:hidden text-right">
         <div className="text-base font-bold tabular-nums">
-          {formatFps(p.projected_fps_on_date)}
+          {formatFps(rightNumber)}
         </div>
         <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
-          Proj
+          {rightLabel}
         </div>
       </div>
     </div>
   );
 }
 
-function MobileStatRow({ p }: { p: TeamPlayerView }) {
-  const s = p.season_stats;
+function MobileStatRow({ p, isPast }: { p: TeamPlayerView; isPast: boolean }) {
+  const s =
+    isPast && p.actual_stats ? p.actual_stats : p.season_stats;
   return (
     <div className="grid grid-cols-6 border-b border-foreground/5 bg-foreground/[0.015] px-3 py-2 md:hidden">
       <StatCell label="PTS" value={s.pts} />
@@ -494,6 +503,7 @@ export function TeamView() {
   }
   if (!teamQ.data) return null;
   const t = teamQ.data;
+  const isPast = t.is_past_date;
 
   function renderBucket(label: string, players: TeamPlayerView[]) {
     if (players.length === 0) return null;
@@ -517,6 +527,7 @@ export function TeamView() {
                 <PlayerRow
                   p={p}
                   effectiveSlot={effectiveSlot(p)}
+                  isPast={isPast}
                   isSwapSource={isSrc}
                   isSwapCandidate={isCandidate}
                   isModified={overrides[p.name] !== undefined}
@@ -524,7 +535,7 @@ export function TeamView() {
                   onClickSwap={() => onClickSlot(p.name)}
                   onClickRow={() => onClickRow(p)}
                 />
-                <MobileStatRow p={p} />
+                <MobileStatRow p={p} isPast={isPast} />
               </div>
             );
           })}
@@ -547,7 +558,14 @@ export function TeamView() {
         </div>
       </header>
 
-      <DateStrip date={date} onChange={setDate} />
+      <div className="flex flex-wrap items-center gap-3">
+        <DateStrip date={date} onChange={setDate} />
+        {isPast && (
+          <span className="rounded-full border border-foreground/15 bg-foreground/5 px-2 py-1 text-[11px] font-medium text-muted-foreground">
+            Past date — showing actual stats
+          </span>
+        )}
+      </div>
 
       {(swapSource || hasOverrides) && (
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-orange-500/30 bg-orange-500/[0.06] px-4 py-2">

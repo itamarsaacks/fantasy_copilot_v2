@@ -74,6 +74,8 @@ export type TeamPlayerView = {
   injury_note: string | null;
   projected_fps_per_game: number | null;
   projected_fps_on_date: number | null;
+  actual_fps_on_date: number | null;
+  actual_stats: SeasonStats | null;
   game_on_date: GameOnDate | null;
   season_stats: SeasonStats;
 };
@@ -89,6 +91,7 @@ export type TeamResponse = {
   team_name: string;
   manager_name: string | null;
   requested_date: string;
+  is_past_date: boolean;
   starters: RosterBucket;
   bench: RosterBucket;
   ir: RosterBucket;
