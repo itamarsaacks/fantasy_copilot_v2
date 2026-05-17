@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { useActiveLeague } from "@/lib/hooks/use-active-league";
 import { api } from "@/lib/api";
@@ -100,9 +101,14 @@ function statByCol(s: PlayerSeasonStats, col: SortBy): number | null {
 // Main view
 // ---------------------------------------------------------------------------
 
+const COMPARE_MAX = 4;
+
 export function PlayersView() {
   const { leagueId, league, isLoading: leagueLoading } = useActiveLeague();
   const [openPlayer, setOpenPlayer] = useState<{ id: number; name: string } | null>(null);
+  // Compare cart — player ids selected via the row checkbox. Cleared on
+  // league switch. Capped at COMPARE_MAX so the compare view stays readable.
+  const [compareIds, setCompareIds] = useState<number[]>([]);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [position, setPosition] = useState<string | null>(null);
@@ -121,6 +127,20 @@ export function PlayersView() {
   useEffect(() => {
     setOffset(0);
   }, [debouncedSearch, position, availability, sortBy, sortDir]);
+
+  // Reset compare cart when leagueId changes (so you don't try to compare
+  // players from another league).
+  useEffect(() => {
+    setCompareIds([]);
+  }, [leagueId]);
+
+  function toggleCompare(id: number) {
+    setCompareIds((prev) => {
+      if (prev.includes(id)) return prev.filter((x) => x !== id);
+      if (prev.length >= COMPARE_MAX) return prev;
+      return [...prev, id];
+    });
+  }
 
   const params = useMemo(() => {
     const sp = new URLSearchParams();
@@ -225,7 +245,8 @@ export function PlayersView() {
       {/* Table */}
       <section className="rounded-xl bg-card ring-1 ring-foreground/10">
         {/* Header row — desktop only */}
-        <div className="hidden grid-cols-[minmax(0,1fr)_repeat(6,3.5rem)_5rem_4rem] items-center gap-3 border-b border-foreground/10 px-4 py-2 md:grid">
+        <div className="hidden grid-cols-[1.5rem_minmax(0,1fr)_repeat(6,3.5rem)_5rem_4rem] items-center gap-3 border-b border-foreground/10 px-4 py-2 md:grid">
+          <span aria-hidden />
           {SORT_COLS.map((c) => (
             <button
               key={c.id}
@@ -268,6 +289,11 @@ export function PlayersView() {
               highlightSort={sortBy}
               isFetchingRefresh={playersQ.isFetching && !playersQ.isLoading}
               onClick={() => setOpenPlayer({ id: p.id, name: p.name })}
+              compareSelected={compareIds.includes(p.id)}
+              compareDisabled={
+                !compareIds.includes(p.id) && compareIds.length >= COMPARE_MAX
+              }
+              onToggleCompare={() => toggleCompare(p.id)}
             />
           ))}
         </div>
@@ -293,6 +319,79 @@ export function PlayersView() {
         playerId={openPlayer?.id ?? null}
         playerName={openPlayer?.name}
       />
+
+      {compareIds.length >= 1 && (
+        <CompareBar
+          ids={compareIds}
+          items={items}
+          onClear={() => setCompareIds([])}
+          onRemove={(id) =>
+            setCompareIds((prev) => prev.filter((x) => x !== id))
+          }
+        />
+      )}
+    </div>
+  );
+}
+
+function CompareBar({
+  ids,
+  items,
+  onClear,
+  onRemove,
+}: {
+  ids: number[];
+  items: PlayerView[];
+  onClear: () => void;
+  onRemove: (id: number) => void;
+}) {
+  // Resolve names from whatever we've loaded on this page. If a player
+  // isn't on the current page they'll show as "#id" — fine for v1.
+  const byId = useMemo(() => {
+    const m = new Map<number, string>();
+    for (const p of items) m.set(p.id, p.name);
+    return m;
+  }, [items]);
+  const enoughToCompare = ids.length >= 2;
+  return (
+    <div className="fixed inset-x-0 bottom-4 z-40 mx-auto flex max-w-3xl flex-wrap items-center gap-2 rounded-xl border border-foreground/15 bg-card/95 px-4 py-2 shadow-lg backdrop-blur">
+      <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+        Compare
+      </span>
+      <div className="flex flex-wrap gap-1">
+        {ids.map((id) => (
+          <button
+            key={id}
+            type="button"
+            onClick={() => onRemove(id)}
+            className="rounded-full border border-orange-500/40 bg-orange-500/10 px-2 py-0.5 text-xs font-medium text-orange-300 hover:bg-orange-500/20"
+            title="Remove from comparison"
+          >
+            {byId.get(id) ?? `#${id}`} ✕
+          </button>
+        ))}
+      </div>
+      <div className="ml-auto flex items-center gap-2">
+        <button
+          type="button"
+          onClick={onClear}
+          className="rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-foreground/5"
+        >
+          Clear
+        </button>
+        {enoughToCompare ? (
+          <Link
+            href={`/players/compare?ids=${ids.join(",")}`}
+            className="rounded-md bg-foreground px-3 py-1.5 text-xs font-semibold text-background hover:opacity-90"
+          >
+            Compare {ids.length} →
+          </Link>
+        ) : (
+          <span className="rounded-md bg-foreground/10 px-3 py-1.5 text-xs font-medium text-muted-foreground">
+            Pick at least one more
+          </span>
+        )}
+      </div>
     </div>
   );
 }
@@ -331,11 +430,17 @@ function PlayerRow({
   highlightSort,
   isFetchingRefresh,
   onClick,
+  compareSelected,
+  compareDisabled,
+  onToggleCompare,
 }: {
   p: PlayerView;
   highlightSort: SortBy;
   isFetchingRefresh: boolean;
   onClick: () => void;
+  compareSelected: boolean;
+  compareDisabled: boolean;
+  onToggleCompare: () => void;
 }) {
   const s = p.season_stats;
   const tone = statusTone(p.status);
@@ -355,10 +460,26 @@ function PlayerRow({
     <div
       onClick={onClick}
       className={cn(
-        "cursor-pointer border-b border-foreground/5 px-3 py-3 last:border-b-0 transition hover:bg-foreground/[0.02] md:grid md:grid-cols-[minmax(0,1fr)_repeat(6,3.5rem)_5rem_4rem] md:items-center md:gap-3 md:px-4",
+        "cursor-pointer border-b border-foreground/5 px-3 py-3 last:border-b-0 transition hover:bg-foreground/[0.02] md:grid md:grid-cols-[1.5rem_minmax(0,1fr)_repeat(6,3.5rem)_5rem_4rem] md:items-center md:gap-3 md:px-4",
         isFetchingRefresh && "opacity-80",
+        compareSelected && "bg-orange-500/[0.04]",
       )}
     >
+      <input
+        type="checkbox"
+        checked={compareSelected}
+        disabled={compareDisabled}
+        onChange={onToggleCompare}
+        onClick={(e) => e.stopPropagation()}
+        title={
+          compareDisabled
+            ? "Compare cart is full (max 4)"
+            : compareSelected
+            ? "Remove from comparison"
+            : "Add to comparison"
+        }
+        className="size-4 shrink-0 cursor-pointer accent-orange-500 disabled:cursor-not-allowed disabled:opacity-40"
+      />
       {/* Name + meta column */}
       <div className="min-w-0">
         <div className="flex flex-wrap items-baseline gap-2">
