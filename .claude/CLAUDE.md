@@ -1,5 +1,13 @@
 # Fantasy NBA Copilot v2
 
+## Read first
+
+For current status, **read `docs/PROJECT_STATE.md` and the latest entry of
+`SESSION_NOTES.md`**. Those are kept current; this file describes
+durable design + working rules. As of 2026-05-17 all five product
+tabs ship + Players v2 detail experience + eval dashboard live.
+Agent has 15 tools (not 13). See `PROJECT_STATE.md` for the inventory.
+
 ## What this is
 A public Fantasy NBA copilot. Users connect a Yahoo Fantasy Basketball league via OAuth and chat with an AI that knows their roster, league rules, free agents, projections, schedules, injuries, and live NBA news. Not a personal tool — built to ship to other users.
 

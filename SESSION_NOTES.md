@@ -9,6 +9,82 @@ the durable record of what shipped; this file is the human-readable
 
 ---
 
+## 2026-05-17 → 2026-05-18 — Five product tabs + eval dashboard + Players v2 detail experience all shipped
+
+**Done this session:** (full log in `docs/SESSION_2026-05-17.md`, 18 commits, HEAD `07a4e5d`)
+
+Product tabs — every one of them shipped v1 in this session:
+- **Team tab** (`8eface1`, `68f2d1f`) — per-date roster, projection / actual fps from Yahoo, what-if slot swap
+- **Players tab v1 then v2** (`d50a614` → `07a4e5d`) — searchable list → click-row drawer with arbitrary date-range stats + projection + game log + news + ownership timeline + multi-player compare
+- **Waivers tab** (`0bc950c`, `3a6892f`) — pickup recommendations + drop candidates + paired-swap cards over a window selector
+- **League tab** (`6dddd27`) — standings + scoring rules + settings
+- **Trades tab** (`32b7cfa`) — dual-roster trade builder with fps delta + verdict
+
+Eval dashboard (E5/E6/E7) all shipped in `13a5606`:
+- `ADMIN_USER_IDS=1` env + `require_admin` dep
+- `/api/admin/evals/*` endpoints (summary, runs, runs/{id}, cases, cases/{id}, regressions)
+- `/eval` frontend (4 routes — landing, run detail, case library, case detail)
+- Sidebar shows "Admin → Eval" only when `is_admin=true`
+
+Players v2 deep dive (5 passes after first user feedback) — fixed data correctness AND UX:
+- Pass 1 `71170e3`: Draft results sync — drafted-and-never-traded players now show from draft day. Yahoo's `/transactions` is post-draft only; needed `/draftresults` too.
+- Pass 2 `2d29075`: ESPN schedule backfill (1243 games / 177 days, 2025-10-21 → 2026-04-15). Re-linked 243 stale game logs. OPP column now populates.
+- Pass 3 `f227910`: Horizontal `HorizontalOwnershipTimeline` with per-team color palette, today marker, click-to-set-range.
+- Pass 4+5 `07a4e5d`: Hover-revealed "+ Compare" button per row, prefetch-on-hover (drawer ~50ms instead of ~1.7s cold).
+
+Infrastructure:
+- `unaccent` extension migration (`c3d4e5f6a7b8`) — diacritic-insensitive name search
+- `player_ownership_events` table + migration (`d4e5f6a7b8c9`)
+- New service `app/services/player_history.py` — Yahoo per-date stats cache → `nba_game_logs`, with off-day placeholder rows for zero-round-trip subsequent loads
+- New sync `app/jobs/sync_transactions.py` — draft + transactions → ownership events
+- New `backfill_schedule()` in `app/jobs/sync_schedule.py` for past-season schedule
+- `User-Agent: fantasy-copilot/1.0` added to every Yahoo connector call (Yahoo returns HTTP 999 without it)
+
+Docs:
+- Rewrote `docs/PROJECT_STATE.md` (was stale from 5/12)
+- Rewrote `docs/BACKLOG.md` per-tab convention (most "not built" items now shipped — remaining items are polish + Stage 2 stuff)
+- New memory: `yahoo_gotchas.md` (User-Agent, stat IDs, Infinity in JSONB, draft+transactions both needed, refresh tokens, concurrency caps)
+- New memory: `remote_control_workflow.md` (iPhone setup)
+- Updated `MEMORY.md` index
+
+Mobile workflow:
+- Itamar set up Claude Code Remote Control on his iPhone. Daily-start command:
+  ```bash
+  cd /Users/itamarsaacks/Desktop/fantasy_copilot_v2
+  claude remote-control --spawn=worktree --name "Fantasy Copilot"
+  ```
+  See memory `remote_control_workflow.md` for full setup + the `unset ANTHROPIC_API_KEY` requirement.
+
+**Next session should consider (priority order):**
+
+1. **Polish the new tabs based on user feedback** — Itamar will give a list of tweaks per tab. The biggest known items: per-segment stats card on Players timeline (clicking a segment surfaces inline summary), season-overall vs period toggle on Stats tab, Team tab "other things i want to fix" that weren't enumerated yet.
+2. **Background nightly game-log backfill** — biggest remaining perf win for the Players drawer (`docs/BACKLOG.md` → Global section).
+3. **Eval improvement loop** — the build-everything-first gate is lifted. Two known borderline misses from 5/12 (`injury_screen_fa_list`, `start_sit_tonight`) plus a full-suite refresh would surface real regressions before the season starts.
+4. **Team tab Stage 2** — opponent defensive ratings to replace the ±3% home factor with real opp-strength data.
+
+**In flight / uncommitted at session end:**
+- This wrap commit (SESSION_NOTES + PROJECT_STATE + BACKLOG + SESSION_2026-05-17 + memory updates).
+- Finder-duplicate noise in repo root: `frontend/*  2.*` files. Untracked, ignored, but should be cleaned up. `git clean -fd` from the v2 path will wipe them; verify nothing important first.
+- Smoke test NOT run for these doc-only changes.
+
+**Env state at session end:**
+- Postgres: running (Docker)
+- Backend uvicorn: running on :8000
+- Frontend npm dev: running on :3000
+- ngrok: running, tunnel `sensually-april-unclad.ngrok-free.dev` → frontend
+- Claude Code Remote Control: configured. Requires `unset ANTHROPIC_API_KEY` in any shell that wants to launch a Remote Control session, because Yahoo OAuth → claude.ai is required (API key auth is rejected).
+
+**Open questions / parked decisions:**
+- Whether the Trade tab's "+ Compare" parallel needs a similar button — deferred to user feedback.
+- Per-team color palette is hash-based (`team_id % 12`); for a 12-team league this never collides but a >12-team league would. Acceptable for now.
+- 83-pt Bam Adebayo game on 2026-03-10 in the cached data looks like a Yahoo data glitch (high FTA count, unrealistic). We pass it through; not our problem.
+- The 5-min `staleTime` on ownership timeline is a guess. Adjust if it feels stale during use.
+
+**User mood at session end:**
+Tired but satisfied. We went from "Team-tab tweaks tomorrow" at the start to ~18 commits ending with all five tabs + eval dashboard live and a working iPhone Remote Control. He's set up to start the next session from anywhere.
+
+---
+
 ## 2026-05-10 — Eval harness design + foundation scaffolded
 
 **Done this session:**
