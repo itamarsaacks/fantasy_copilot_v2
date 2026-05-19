@@ -107,6 +107,12 @@ export function markThreadHydratedAs(threadId: string | null) {
 }
 
 export function checkLeagueChanged(leagueKey: string | null): boolean {
+  // CRITICAL: ignore null transitions in either direction. useActiveLeague()
+  // is a per-component hook with its own useState, so every remount of
+  // Conversation goes through a brief leagueKey=null state before its
+  // useEffect reads from localStorage. Without this guard we'd see
+  // "real → null" on every remount and wipe the chat.
+  if (leagueKey === null) return false;
   if (_lastSeenLeagueKey === null) {
     _lastSeenLeagueKey = leagueKey;
     return false;
