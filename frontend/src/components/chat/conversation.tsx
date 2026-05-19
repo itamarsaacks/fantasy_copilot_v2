@@ -1,11 +1,19 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useActiveLeague } from "@/lib/hooks/use-active-league";
 import { useMe } from "@/lib/hooks/use-me";
 import { useChat } from "@/lib/hooks/use-chat";
 import { useChatThread } from "@/lib/hooks/use-chat-thread";
+import {
+  checkLeagueChanged,
+  checkNewChatRequested,
+  markThreadHydratedAs,
+  resetChatState,
+  shouldHydrateThread,
+  useChatState,
+} from "@/lib/hooks/use-chat-state";
 import { api } from "@/lib/api";
 import type { ConversationDetail } from "@/lib/hooks/use-conversations";
 import { Composer } from "./composer";
@@ -31,8 +39,8 @@ export function Conversation() {
   const chat = useChat();
   const { activeThreadId, setActiveThreadId, newChatRequestId } = useChatThread();
 
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [draft, setDraft] = useState("");
+  // Module-level store — survives unmount. See use-chat-state.ts for why.
+  const { messages, draft, setMessages, setDraft } = useChatState();
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll on new messages
@@ -43,22 +51,22 @@ export function Conversation() {
   }, [messages]);
 
   // Wipe conversation + thread when the league changes — different DB context.
+  // Guard lives in the module store so a league switch detected from the
+  // topbar (while /chat is unmounted) still triggers the wipe on the next
+  // /chat visit.
   const leagueKey = league?.league_key ?? null;
-  const lastLeagueKey = useRef<string | null>(null);
   useEffect(() => {
-    if (lastLeagueKey.current && lastLeagueKey.current !== leagueKey) {
-      setMessages([]);
+    if (checkLeagueChanged(leagueKey)) {
+      resetChatState();
       setActiveThreadId(null);
     }
-    lastLeagueKey.current = leagueKey;
   }, [leagueKey, setActiveThreadId]);
 
   // "New chat" button (in sidebar) bumps newChatRequestId — clear here.
-  const lastNewChatId = useRef<number>(newChatRequestId);
+  // Same module-level guard.
   useEffect(() => {
-    if (lastNewChatId.current !== newChatRequestId) {
-      setMessages([]);
-      lastNewChatId.current = newChatRequestId;
+    if (checkNewChatRequested(newChatRequestId)) {
+      resetChatState();
     }
   }, [newChatRequestId]);
 
@@ -80,12 +88,14 @@ export function Conversation() {
     staleTime: 0,
   });
 
-  // Hydrate messages from server when a thread is opened.
-  const lastHydratedThread = useRef<string | null>(null);
+  // Hydrate from server only when (a) the activeThreadId actually changed
+  // since we last hydrated, AND (b) the detail query has data. The guard
+  // lives in the module store so navigating away and back doesn't re-fire
+  // a hydration that would clobber an in-flight optimistic update.
   useEffect(() => {
     if (!activeThreadId) return;
-    if (lastHydratedThread.current === activeThreadId) return;
     if (!conversationDetailQuery.data) return;
+    if (!shouldHydrateThread(activeThreadId)) return;
     const hydrated: ChatMessage[] = conversationDetailQuery.data.messages
       .filter((m) => m.role === "user" || m.role === "assistant")
       .filter((m) => m.content && m.content.trim().length > 0)
@@ -95,8 +105,7 @@ export function Conversation() {
         content: m.content,
       }));
     setMessages(hydrated);
-    lastHydratedThread.current = activeThreadId;
-  }, [activeThreadId, conversationDetailQuery.data]);
+  }, [activeThreadId, conversationDetailQuery.data, setMessages]);
 
   const sendMessage = async (text: string) => {
     if (!text.trim() || !me.data?.user || !league || !leagueId) return;
@@ -124,8 +133,12 @@ export function Conversation() {
       // Adopt the thread_id the server tells us (new conversations need this).
       if (res.thread_id !== activeThreadId) {
         setActiveThreadId(res.thread_id);
-        lastHydratedThread.current = res.thread_id;
+        // Tell the hydration guard we own this thread now, so a hydration
+        // fetch that lands afterwards doesn't replace our in-memory state.
+        markThreadHydratedAs(res.thread_id);
       }
+      // setMessages writes to the module store, so this lands even if the
+      // user navigated away while the request was in flight.
       setMessages((m) =>
         m.map((msg) =>
           msg.id === pendingMsg.id
