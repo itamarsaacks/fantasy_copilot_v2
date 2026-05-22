@@ -10,12 +10,12 @@ import type {
   PlayerProjectedGameRow,
 } from "@/lib/api-types";
 import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetDescription,
-} from "@/components/ui/sheet";
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { HorizontalOwnershipTimeline } from "@/components/players/ownership-timeline";
 import { PlayerAvatar } from "@/components/shared/player-avatar";
@@ -392,9 +392,10 @@ export function PlayerDetailDrawer({
     return parseISO(start) > todayD;
   }, [start]);
 
-  // Responsive: bottom sheet on mobile (more native + thumb-reach), side
-  // drawer on desktop. Tracks viewport with a matchMedia listener so a
-  // device-rotation mid-open doesn't strand the wrong layout.
+  // Responsive sizing: centered Dialog on desktop (~900px wide), full-bleed
+  // bottom sheet feel on mobile (≤640px). Dialog gives more horizontal space
+  // than the old right-Sheet (stat grid fits one row, game log columns all
+  // visible) — that's the centered-modal redesign the user asked for.
   const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -406,17 +407,16 @@ export function PlayerDetailDrawer({
   }, []);
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent
-        side={isMobile ? "bottom" : "right"}
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
         className={
           isMobile
-            ? "h-[90vh] overflow-y-auto rounded-t-xl"
-            : "w-full overflow-y-auto sm:max-w-2xl"
+            ? "h-[92vh] w-[96vw] max-w-none overflow-y-auto p-4 rounded-xl"
+            : "w-[min(900px,90vw)] max-w-none max-h-[88vh] overflow-y-auto p-6"
         }
       >
-        <SheetHeader>
-          <SheetTitle>
+        <DialogHeader>
+          <DialogTitle>
             <span className="flex items-center gap-3">
               <PlayerAvatar
                 name={p?.name ?? playerName ?? "Player"}
@@ -426,8 +426,8 @@ export function PlayerDetailDrawer({
               />
               <span>{p?.name ?? playerName ?? "Player"}</span>
             </span>
-          </SheetTitle>
-          <SheetDescription>
+          </DialogTitle>
+          <DialogDescription>
             {p ? (
               <span className="flex flex-wrap items-center gap-2 text-xs">
                 <span>{p.nba_team ?? "—"}</span>
@@ -475,8 +475,8 @@ export function PlayerDetailDrawer({
                 {p.injury_note}
               </p>
             )}
-          </SheetDescription>
-        </SheetHeader>
+          </DialogDescription>
+        </DialogHeader>
 
         <div className="space-y-4 px-4 pb-6">
           {/* Date range picker */}
@@ -710,7 +710,7 @@ export function PlayerDetailDrawer({
             </section>
           )}
         </div>
-      </SheetContent>
-    </Sheet>
+      </DialogContent>
+    </Dialog>
   );
 }
