@@ -1,35 +1,54 @@
 "use client";
 
 /**
- * Games tab — placeholder route.
+ * Games tab — Phase 2 scoreboard.
  *
- * The full implementation ships in the dedicated session (`/tab-session
- * games`, branch `feature/games-tab`). See docs/plans/games.md for the
- * phase plan. This stub exists so the new sidebar entry doesn't 404 +
- * to give the next session a starting file.
- *
- * Data is already available — backend endpoints exist:
- *   GET /api/games?date=YYYY-MM-DD
- *   GET /api/games/{game_id}/box?league_id=N
- * Frontend primitives are ready: <DateToggle/>, <TeamLogo/>, <PlayerAvatar/>,
- * <PlayerChip/>, <NestedTabs/>, <DrawerProvider/> (via app shell).
+ * Sub-tabs: Scores (per-day scoreboard) + NBA Standings.
+ * NBA standings endpoint ships in Phase 4. Box-score drill-in ships in Phase 3.
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { DateToggle } from "@/components/shared/date-toggle";
+import { GamesList } from "@/components/games/games-list";
+import { GameBoxModal } from "@/components/games/game-box-modal";
 import { NestedTabs } from "@/components/shared/nested-tabs";
+import { useActiveLeague } from "@/lib/hooks/use-active-league";
+import { useAppToday } from "@/lib/hooks/use-app-today";
+import { toISODate } from "@/lib/date-utils";
 
 export default function GamesPage() {
-  const [date, setDate] = useState<Date>(new Date());
+  const { today: appToday, loading } = useAppToday();
+  const { leagueId } = useActiveLeague();
+  const [date, setDate] = useState<Date | null>(null);
   const [tab, setTab] = useState("scores");
+  const [selectedGameId, setSelectedGameId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (appToday && !date) setDate(appToday);
+  }, [appToday, date]);
 
   return (
     <div className="h-full overflow-y-auto p-6">
       <div className="mx-auto max-w-5xl">
         <div className="mb-6 flex items-center justify-between gap-4">
           <h1 className="text-2xl font-semibold tracking-tight">Games</h1>
-          <DateToggle value={date} onChange={setDate} />
+          {date ? (
+            <div className="flex items-center gap-2">
+              <DateToggle value={date} onChange={setDate} maxDate={appToday ?? undefined} />
+              <button
+                type="button"
+                onClick={() => appToday && setDate(appToday)}
+                disabled={!appToday || toISODate(date) === toISODate(appToday)}
+                className="inline-flex h-10 items-center rounded-md border border-slate-200 px-3 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-30 disabled:hover:bg-transparent"
+                aria-label="Jump to today"
+              >
+                Today
+              </button>
+            </div>
+          ) : (
+            <div className="h-10 w-[320px] animate-pulse rounded-md bg-slate-100" />
+          )}
         </div>
 
         <NestedTabs
@@ -42,19 +61,46 @@ export default function GamesPage() {
           className="mb-6"
         />
 
-        <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-12 text-center text-slate-600">
-          <div className="text-base font-medium">Games tab — coming soon</div>
-          <div className="mt-2 max-w-md mx-auto text-sm text-slate-500">
-            This route is a placeholder so the new sidebar entry resolves.
-            The full Games tab (scoreboard with team logos, click-game → box
-            score, click-player → drawer, NBA standings sub-tab) builds in
-            the next dedicated session — see <code>docs/plans/games.md</code>.
-          </div>
-          <div className="mt-4 text-xs text-slate-400">
-            Wanted date: {date.toLocaleDateString()} · Active sub-tab: {tab}
-          </div>
-        </div>
+        {tab === "scores" ? (
+          <ScoresPanel
+            date={date}
+            loading={loading}
+            onSelectGame={setSelectedGameId}
+          />
+        ) : (
+          <StandingsPanel />
+        )}
       </div>
+      {selectedGameId && (
+        <GameBoxModal
+          gameId={selectedGameId}
+          leagueId={leagueId}
+          onClose={() => setSelectedGameId(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+function ScoresPanel({
+  date,
+  loading,
+  onSelectGame,
+}: {
+  date: Date | null;
+  loading: boolean;
+  onSelectGame: (id: string) => void;
+}) {
+  if (loading || !date) {
+    return <div className="h-48 animate-pulse rounded-lg bg-slate-100" />;
+  }
+  return <GamesList date={date} onSelectGame={onSelectGame} />;
+}
+
+function StandingsPanel() {
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white p-8 text-center text-sm text-slate-500">
+      NBA standings — coming in Phase 4.
     </div>
   );
 }
