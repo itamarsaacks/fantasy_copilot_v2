@@ -1,7 +1,13 @@
 "use client";
 
-import { ChatMarkdown } from "./markdown";
+import { useMemo } from "react";
 import { Loader2 } from "lucide-react";
+
+import { useActiveLeague } from "@/lib/hooks/use-active-league";
+import { useMentionContext } from "@/lib/hooks/use-mention-context";
+import { useDrawer } from "@/components/shared/drawer-context";
+import type { MentionsContext } from "@/lib/render-with-mentions";
+import { ChatMarkdown } from "./markdown";
 
 export type ChatMessage = {
   id: string;
@@ -12,6 +18,19 @@ export type ChatMessage = {
 };
 
 export function Message({ message }: { message: ChatMessage }) {
+  const { leagueId } = useActiveLeague();
+  const mentionCtx = useMentionContext(leagueId);
+  const { openPlayer } = useDrawer();
+
+  const ctx = useMemo<MentionsContext | undefined>(() => {
+    if (!mentionCtx.data) return undefined;
+    return {
+      players: mentionCtx.data.players,
+      teams: mentionCtx.data.teams,
+      onPlayerClick: (id: number) => openPlayer(id),
+    };
+  }, [mentionCtx.data, openPlayer]);
+
   if (message.role === "user") {
     return (
       <div className="space-y-1">
@@ -41,7 +60,7 @@ export function Message({ message }: { message: ChatMessage }) {
       {message.pending ? (
         <PendingIndicator />
       ) : (
-        <ChatMarkdown content={message.content} />
+        <ChatMarkdown content={message.content} mentionsContext={ctx} />
       )}
     </div>
   );

@@ -469,3 +469,24 @@ export type TeamResponse = {
   bench: RosterBucket;
   ir: RosterBucket;
 };
+
+// /api/players/{league_id}/mention-context
+export type MentionContextPlayer = {
+  player_id: number;
+  full_name: string;
+  last_name: string | null;
+  position: string | null;
+  nba_team_abbr: string | null;
+  headshot_path: string | null;
+};
+
+export type MentionContextTeam = {
+  abbr: string;
+  full_name: string;
+};
+
+export type MentionContextResponse = {
+  league_id: number;
+  players: MentionContextPlayer[];
+  teams: MentionContextTeam[];
+};
