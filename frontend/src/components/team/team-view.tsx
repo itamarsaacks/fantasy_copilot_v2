@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useActiveLeague } from "@/lib/hooks/use-active-league";
+import { useAppToday } from "@/lib/hooks/use-app-today";
 import { api } from "@/lib/api";
 import type { TeamPlayerView, TeamResponse } from "@/lib/api-types";
 import { cn } from "@/lib/utils";
@@ -32,8 +33,7 @@ function isSameDay(a: Date, b: Date): boolean {
   );
 }
 
-function formatDateHeadline(d: Date): string {
-  const today = new Date();
+function formatDateHeadline(d: Date, today: Date): string {
   if (isSameDay(d, today)) return "Today";
   const yest = new Date(today);
   yest.setDate(today.getDate() - 1);
@@ -128,16 +128,17 @@ function canFillSlot(player: TeamPlayerView, slot: string): boolean {
 function DateStrip({
   date,
   onChange,
+  today,
 }: {
   date: Date;
   onChange: (d: Date) => void;
+  today: Date;
 }) {
   function shift(days: number) {
     const next = new Date(date);
     next.setDate(date.getDate() + days);
     onChange(next);
   }
-  const today = new Date();
   const isToday = isSameDay(date, today);
 
   return (
@@ -152,7 +153,7 @@ function DateStrip({
       </button>
       <div className="flex min-w-0 flex-1 flex-col items-center px-2 sm:flex-row sm:items-baseline sm:gap-3">
         <span className="text-sm font-semibold tracking-tight">
-          {formatDateHeadline(date)}
+          {formatDateHeadline(date, today)}
         </span>
         <span className="text-xs text-muted-foreground">
           {date.toLocaleDateString(undefined, {
@@ -179,7 +180,7 @@ function DateStrip({
       {!isToday && (
         <button
           type="button"
-          onClick={() => onChange(new Date())}
+          onClick={() => onChange(new Date(today))}
           className="h-9 rounded-md px-3 text-xs font-medium text-muted-foreground ring-1 ring-foreground/10 transition hover:bg-foreground/5"
         >
           Today
@@ -378,19 +379,28 @@ function MobileStatRow({ p, isPast }: { p: TeamPlayerView; isPast: boolean }) {
 
 export function TeamView() {
   const { leagueId, league, isLoading: leagueLoading } = useActiveLeague();
-  const [date, setDate] = useState<Date>(() => new Date());
+  // appToday is replay-aware. SSR / before-resolve falls back to wall-clock
+  // so the component renders something; useEffect re-seeds `date` once
+  // appToday actually arrives.
+  const { today: appToday } = useAppToday();
+  const today = appToday ?? new Date();
+  const [date, setDate] = useState<Date | null>(null);
+
+  useEffect(() => {
+    if (appToday && !date) setDate(appToday);
+  }, [appToday, date]);
 
   // Local what-if slot overrides: playerName -> custom slot.
   // Persisted only in component state. Not pushed to Yahoo.
   const [overrides, setOverrides] = useState<Record<string, string>>({});
   const [swapSource, setSwapSource] = useState<string | null>(null);
 
-  const dateISO = toISODate(date);
+  const dateISO = date ? toISODate(date) : "";
   const teamQ = useQuery<TeamResponse>({
     queryKey: ["team", leagueId, dateISO],
     queryFn: () =>
       api<TeamResponse>(`/api/team/${leagueId}?date=${dateISO}`),
-    enabled: !!leagueId,
+    enabled: !!leagueId && !!dateISO,
   });
 
   // Flatten the three buckets to a single list — we re-bucket on the client
@@ -559,7 +569,11 @@ export function TeamView() {
       </header>
 
       <div className="flex flex-wrap items-center gap-3">
-        <DateStrip date={date} onChange={setDate} />
+        {date ? (
+          <DateStrip date={date} onChange={setDate} today={today} />
+        ) : (
+          <div className="h-13 w-64 animate-pulse rounded-xl bg-foreground/5" />
+        )}
         {isPast && (
           <span className="rounded-full border border-foreground/15 bg-foreground/5 px-2 py-1 text-[11px] font-medium text-muted-foreground">
             Past date — showing actual stats

@@ -15,21 +15,29 @@
  * <PlayerChip/>, <NestedTabs/>, <DrawerProvider/> (via app shell).
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { DateToggle } from "@/components/shared/date-toggle";
 import { NestedTabs } from "@/components/shared/nested-tabs";
+import { useAppToday } from "@/lib/hooks/use-app-today";
 
 export default function GamesPage() {
-  const [date, setDate] = useState<Date>(new Date());
+  const { today: appToday } = useAppToday();
+  const [date, setDate] = useState<Date | null>(null);
   const [tab, setTab] = useState("scores");
+
+  useEffect(() => {
+    if (appToday && !date) setDate(appToday);
+  }, [appToday, date]);
 
   return (
     <div className="h-full overflow-y-auto p-6">
       <div className="mx-auto max-w-5xl">
         <div className="mb-6 flex items-center justify-between gap-4">
           <h1 className="text-2xl font-semibold tracking-tight">Games</h1>
-          <DateToggle value={date} onChange={setDate} />
+          {date && (
+            <DateToggle value={date} onChange={setDate} maxDate={appToday ?? undefined} />
+          )}
         </div>
 
         <NestedTabs
@@ -51,7 +59,7 @@ export default function GamesPage() {
             the next dedicated session — see <code>docs/plans/games.md</code>.
           </div>
           <div className="mt-4 text-xs text-slate-400">
-            Wanted date: {date.toLocaleDateString()} · Active sub-tab: {tab}
+            Wanted date: {date?.toLocaleDateString() ?? "—"} · Active sub-tab: {tab}
           </div>
         </div>
       </div>

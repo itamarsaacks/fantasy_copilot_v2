@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import type { OwnershipInterval } from "@/lib/api-types";
+import { useAppToday } from "@/lib/hooks/use-app-today";
 import { cn } from "@/lib/utils";
 
 // ---------------------------------------------------------------------------
@@ -64,21 +65,27 @@ export function HorizontalOwnershipTimeline({
   selectedRange?: { start: string; end: string } | null;
   onPickRange: (start: string, end: string) => void;
 }) {
+  // "Now" for open-ended intervals + the today-marker is replay-aware
+  // via useAppToday. Without this, in replay mode the timeline would
+  // stretch out to real-world today and the "Today" marker would land
+  // way past the end of the data.
+  const { today: appToday } = useAppToday();
+  const nowAnchor = appToday ?? new Date();
+
   // Compute timeline bounds.
   const { start, end, segs } = useMemo(() => {
     if (intervals.length === 0) {
-      const now = new Date();
-      return { start: now, end: now, segs: [] };
+      return { start: nowAnchor, end: nowAnchor, segs: [] };
     }
     const startD = parseISO(intervals[0].started_at);
     const endD = (() => {
       const last = intervals[intervals.length - 1];
-      return last.ended_at ? parseISO(last.ended_at) : new Date();
+      return last.ended_at ? parseISO(last.ended_at) : nowAnchor;
     })();
     const totalMs = Math.max(endD.getTime() - startD.getTime(), 1);
     const segs = intervals.map((iv, i) => {
       const s = parseISO(iv.started_at);
-      const e = iv.ended_at ? parseISO(iv.ended_at) : new Date();
+      const e = iv.ended_at ? parseISO(iv.ended_at) : nowAnchor;
       const left = ((s.getTime() - startD.getTime()) / totalMs) * 100;
       const width = Math.max(
         ((e.getTime() - s.getTime()) / totalMs) * 100,
@@ -88,16 +95,16 @@ export function HorizontalOwnershipTimeline({
       return { ...iv, left, width, key: `${iv.started_at}-${i}`, sIso: isoDay(s), eIso: isoDay(e) };
     });
     return { start: startD, end: endD, segs };
-  }, [intervals]);
+  }, [intervals, nowAnchor]);
 
-  // Today marker position
+  // Today marker position — uses the replay-aware anchor too.
   const todayLeft = useMemo(() => {
     const totalMs = Math.max(end.getTime() - start.getTime(), 1);
-    const now = Date.now();
+    const now = nowAnchor.getTime();
     if (now < start.getTime()) return null;
     if (now > end.getTime()) return null;
     return ((now - start.getTime()) / totalMs) * 100;
-  }, [start, end]);
+  }, [start, end, nowAnchor]);
 
   if (intervals.length === 0) {
     return (
@@ -119,7 +126,7 @@ export function HorizontalOwnershipTimeline({
         {todayLeft !== null && todayLeft > 8 && todayLeft < 92 && (
           <span>Today</span>
         )}
-        <span>{end > new Date() ? fmtShort(end) : "Now"}</span>
+        <span>{end > nowAnchor ? fmtShort(end) : "Now"}</span>
       </div>
 
       {/* The bar */}

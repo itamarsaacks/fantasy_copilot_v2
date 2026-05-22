@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { useActiveLeague } from "@/lib/hooks/use-active-league";
+import { useAppToday } from "@/lib/hooks/use-app-today";
 import { api } from "@/lib/api";
 import type {
   PlayerOwnership,
@@ -107,6 +108,7 @@ const COMPARE_MAX = 4;
 export function PlayersView() {
   const queryClient = useQueryClient();
   const { leagueId, league, isLoading: leagueLoading } = useActiveLeague();
+  const { today: appToday } = useAppToday();
   const [openPlayer, setOpenPlayer] = useState<{ id: number; name: string } | null>(null);
   // Compare cart — player ids selected via the row checkbox or per-row
   // Compare button. Cleared on league switch. Capped at COMPARE_MAX so
@@ -146,11 +148,13 @@ export function PlayersView() {
   }
 
   // Warm the player-detail cache on hover so clicking feels instant.
-  // Uses the default 30-day window the drawer opens with.
+  // Uses the default 30-day window the drawer opens with — anchored on
+  // appToday so the prefetch matches the drawer's eventual query keys
+  // (would mismatch the cache otherwise and the drawer would refetch).
   function prefetchDetail(playerId: number) {
-    if (!leagueId) return;
-    const end = new Date();
-    const start = new Date();
+    if (!leagueId || !appToday) return;
+    const end = new Date(appToday);
+    const start = new Date(appToday);
     start.setDate(start.getDate() - 30);
     const toISO = (d: Date) => {
       const y = d.getFullYear();

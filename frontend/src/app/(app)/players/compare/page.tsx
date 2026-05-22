@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQueries } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useActiveLeague } from "@/lib/hooks/use-active-league";
+import { useAppToday } from "@/lib/hooks/use-app-today";
 import type { PlayerDetailResponse } from "@/lib/api-types";
 import { cn } from "@/lib/utils";
 import { PlayerAvatar } from "@/components/shared/player-avatar";
@@ -21,14 +22,18 @@ function toISODate(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
-function daysAgoISO(days: number): string {
-  const d = new Date();
+// Anchor-aware date helpers — every "today" here must respect replay mode
+// via the `anchor` Date sourced from useAppToday. The pre-Phase-2 version
+// used `new Date()` and caused the same Mitchell-only-2-games bug on the
+// compare page.
+function daysAgoFrom(anchor: Date, days: number): string {
+  const d = new Date(anchor);
   d.setDate(d.getDate() - days);
   return toISODate(d);
 }
 
-function daysAheadISO(days: number): string {
-  const d = new Date();
+function daysAheadFrom(anchor: Date, days: number): string {
+  const d = new Date(anchor);
   d.setDate(d.getDate() + days);
   return toISODate(d);
 }
@@ -38,14 +43,17 @@ function fmt(v: number | null | undefined, digits = 1): string {
   return v.toFixed(digits);
 }
 
-const PRESETS = [
-  { id: "l7", label: "Last 7", compute: () => ({ start: daysAgoISO(7), end: toISODate(new Date()) }) },
-  { id: "l14", label: "Last 14", compute: () => ({ start: daysAgoISO(14), end: toISODate(new Date()) }) },
-  { id: "l30", label: "Last 30", compute: () => ({ start: daysAgoISO(30), end: toISODate(new Date()) }) },
-  { id: "l90", label: "Last 90", compute: () => ({ start: daysAgoISO(90), end: toISODate(new Date()) }) },
-  { id: "next7", label: "Next 7", compute: () => ({ start: toISODate(new Date()), end: daysAheadISO(7) }) },
-  { id: "next14", label: "Next 14", compute: () => ({ start: toISODate(new Date()), end: daysAheadISO(14) }) },
-];
+function buildPresets(anchor: Date) {
+  const today = toISODate(anchor);
+  return [
+    { id: "l7", label: "Last 7", compute: () => ({ start: daysAgoFrom(anchor, 7), end: today }) },
+    { id: "l14", label: "Last 14", compute: () => ({ start: daysAgoFrom(anchor, 14), end: today }) },
+    { id: "l30", label: "Last 30", compute: () => ({ start: daysAgoFrom(anchor, 30), end: today }) },
+    { id: "l90", label: "Last 90", compute: () => ({ start: daysAgoFrom(anchor, 90), end: today }) },
+    { id: "next7", label: "Next 7", compute: () => ({ start: today, end: daysAheadFrom(anchor, 7) }) },
+    { id: "next14", label: "Next 14", compute: () => ({ start: today, end: daysAheadFrom(anchor, 14) }) },
+  ];
+}
 
 // ---------------------------------------------------------------------------
 // Page
@@ -60,8 +68,18 @@ export default function ComparePage() {
     .map((s) => Number(s.trim()))
     .filter((n) => Number.isInteger(n) && n > 0);
 
-  const [start, setStart] = useState<string>(daysAgoISO(30));
-  const [end, setEnd] = useState<string>(toISODate(new Date()));
+  const { today: appToday } = useAppToday();
+  const anchor = appToday ?? new Date();
+  const presets = useMemo(() => buildPresets(anchor), [anchor]);
+
+  const [start, setStart] = useState<string>("");
+  const [end, setEnd] = useState<string>("");
+
+  useEffect(() => {
+    if (!appToday) return;
+    setStart((prev) => prev || daysAgoFrom(appToday, 30));
+    setEnd((prev) => prev || toISODate(appToday));
+  }, [appToday]);
 
   const queries = useQueries({
     queries: playerIds.map((pid) => ({
@@ -70,7 +88,7 @@ export default function ComparePage() {
         api<PlayerDetailResponse>(
           `/api/players/${leagueId}/${pid}?start=${start}&end=${end}`,
         ),
-      enabled: !!leagueId,
+      enabled: !!leagueId && !!start && !!end,
     })),
   });
 
@@ -120,7 +138,7 @@ export default function ComparePage() {
       {/* Date range */}
       <section className="rounded-xl bg-card p-3 ring-1 ring-foreground/10">
         <div className="mb-2 flex flex-wrap items-center gap-1">
-          {PRESETS.map((p) => {
+          {presets.map((p) => {
             const r = p.compute();
             const active = r.start === start && r.end === end;
             return (

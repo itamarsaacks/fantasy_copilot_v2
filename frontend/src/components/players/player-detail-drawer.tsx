@@ -495,11 +495,13 @@ export function PlayerDetailDrawer({
   const tone = statusTone(p?.status ?? null);
 
   // Heuristic: if the range is entirely in the past, show actuals first.
-  // If entirely future, show projection. Otherwise show both.
+  // If entirely future, show projection. Otherwise show both. Anchored on
+  // useAppToday so this respects replay mode (real today would mark a March
+  // range as past in May; replay today=2026-03-15 correctly marks future
+  // dates from there).
   const isFutureOnly = useMemo(() => {
-    const todayD = new Date();
-    return parseISO(start) > todayD;
-  }, [start]);
+    return parseISO(start) > anchor;
+  }, [start, anchor]);
 
   // Responsive sizing: centered Dialog on desktop (~900px wide), full-bleed
   // bottom sheet feel on mobile (≤640px). Dialog gives more horizontal space
