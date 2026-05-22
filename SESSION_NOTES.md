@@ -9,9 +9,76 @@ the durable record of what shipped; this file is the human-readable
 
 ---
 
+## 2026-05-22b — Phase A: backfills + APScheduler wiring
+
+Continues 2026-05-22 (entry below). After the foundation landed on main as
+`b511c5f` + the agent-date fix `34bfa4a`, this turn ran the one-shot backfills
+and wired the new sync tiers into APScheduler.
+
+**Done this turn:**
+
+- **APScheduler wiring** in `backend/app/jobs/freshness.py` — three new tiers
+  registered in `start()`, gated by `is_replay_mode()`:
+    - `game_logs_nightly` — daily at ~3am ET (8am UTC approx, DST-tolerant)
+    - `game_logs_live` — every 30 min; the job short-circuits on non-game days
+    - `standings_sweeper` — every 5 min, drains
+      `standings_cache_invalidations`
+  `_next_3am_et_utc()` helper computes the next-day anchor.
+- **Bug fix** in `sync_game_logs.get_active_player_set` — original SQL union
+  subquery referenced a column name that didn't exist; replaced with three
+  scalar queries + Python-side set union. Same result, ~600 ids at NBA scale
+  so the round-trips are immaterial.
+- **Bug fix** in `sync_game_logs.sync_logs_for_date` — was calling
+  `fetch_and_cache_logs(db, user, player, ...)` but the helper takes
+  keyword-only args. Fixed to use `get_fresh_access_token(db, user)` then
+  pass `access_token=…`.
+- **One-shot backfills run** (in this order):
+    1. `python -m scripts.backfill_espn_player_ids` — 30 ESPN team rosters
+       walked. **537 / 719 Yahoo players matched** (518 exact + 19 fuzzy);
+       522 headshots queued; 182 unmatched (mostly mid-season trades —
+       Yahoo's stale `nba_team_abbr` doesn't match ESPN's roster).
+    2. `python -m scripts.download_headshots` — converted ESPN CDN headshots
+       to WebP at 192 + 384 (~6 MB total), wrote to
+       `frontend/public/headshots/`, set `players.headshot_path`.
+    3. `python -m app.jobs.sync_game_logs backfill --from 2026-03-14 --to 2026-03-15`
+       — populated game logs for the replay-date neighborhood.
+
+**Verified live (replay mode):**
+
+- `resolve_today() == 2026-03-15`
+- Smoke 5/5 green, chat agent uses 1 tool, replies coherent
+- Chat: "What NBA games happened today? Who won?" → 7 games with
+  scores + winners
+- `nba_game_logs` for 3/14 = ~500+ rows (was 0 pre-backfill)
+- Both backfill scripts exit cleanly + are idempotent (re-running is a no-op)
+
+**Known follow-ups (intentional, NOT in this commit):**
+
+- Live-mode Yahoo fallback in `players.py:683` + `team.py:329` is still
+  present — per master plan §2.3 it stays until production has a full
+  season backfilled. Once that runs, delete + tighten
+  `check_forbidden_sources.sh` (the `yahoo_in_routes` block → error).
+- 182 unmatched ESPN ids — mostly traded players. The nightly reconcile
+  retries them; manual matching is the long tail.
+- The 3/14-3/15 backfill is intentionally narrow. Run
+  `python -m app.jobs.sync_game_logs backfill --from 2026-03-01 --to 2026-03-15`
+  to widen — it takes ~15 min and makes drawer / standings views richer.
+
+**Next session — recommended:**
+
+1. Open `/tab-session chat-mentions` — the first tab session. Prereqs are
+   all in place (headshots downloaded, components built, agent prompt
+   knows about chips).
+2. Or: do the wider game-logs backfill first if you want more historical
+   data in drawers / Players-tab compare views before building chat UI.
+
+---
+
 ## 2026-05-22 — Data foundation reformation prep (master plan + Steps 1–9 + frontend primitives)
 
-**Done this session:** (branch `feature/data-foundation`, NOT yet merged or committed — review diff first)
+**Done this session:** Shipped on main as `b511c5f`. Subsequent commit `34bfa4a`
+injects current date into agent system prompt. Original session-summary kept
+below for context.
 
 This was a planning + scaffolding session. The user requested a major reformation
 of the app — 6 new tabs, Postgres-as-source-of-truth at request time, point-in-time

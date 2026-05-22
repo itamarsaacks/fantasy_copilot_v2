@@ -72,6 +72,21 @@ SYNC_TIERS: dict[str, dict] = {
 }
 
 
+def _next_3am_et_utc() -> datetime:
+    """Return the next instant that's 3am US Eastern, as a UTC datetime.
+
+    3am ET ≈ 7am UTC (EDT) or 8am UTC (EST). We approximate as 8am UTC
+    — close enough for a once-per-day game-log refresh; we don't fence-post
+    against DST transitions for a sync that's robust to running an hour
+    early or late.
+    """
+    now = datetime.now(timezone.utc)
+    target = now.replace(hour=8, minute=0, second=0, microsecond=0)
+    if target <= now:
+        target += timedelta(days=1)
+    return target
+
+
 # Module-level state. Process-local; OK to lose on restart.
 _scheduler: AsyncIOScheduler | None = None
 # (user_id, league_id, tier) -> datetime of last successful run start.
@@ -113,6 +128,57 @@ def start() -> None:
         replace_existing=True,
         next_run_time=datetime.now(timezone.utc) + timedelta(seconds=30),
     )
+
+    # Data-foundation tiers (master plan §2.2, §2.6, §2.7) — only run in
+    # live mode. Replay mode is for off-season testing; the foundation jobs
+    # check their own is_replay_mode() guards too.
+    if settings.app_mode != "replay":
+        from app.jobs.sync_game_logs import sync_live_tick, sync_nightly
+        from app.services.standings import sweep_standings_invalidations
+
+        async def _sweep_standings_wrapper():
+            async with SessionLocal() as db:
+                return await sweep_standings_invalidations(db)
+
+        # Nightly game-log refresh: 3am ET = 7/8am UTC. Use a 24h interval
+        # anchored 3am ET on the next calendar day so first run lands on
+        # tomorrow morning, not at startup.
+        next_3am_et = _next_3am_et_utc()
+        _scheduler.add_job(
+            sync_nightly,
+            trigger=IntervalTrigger(hours=24),
+            id="game_logs_nightly",
+            max_instances=1,
+            coalesce=True,
+            replace_existing=True,
+            next_run_time=next_3am_et,
+        )
+
+        # Live tier: every 30 min. The job itself short-circuits on non-game days.
+        _scheduler.add_job(
+            sync_live_tick,
+            trigger=IntervalTrigger(minutes=30),
+            id="game_logs_live",
+            max_instances=1,
+            coalesce=True,
+            replace_existing=True,
+            next_run_time=datetime.now(timezone.utc) + timedelta(minutes=2),
+        )
+
+        # Standings cache sweeper: every 5 min. Cheap when no invalidations queued.
+        _scheduler.add_job(
+            _sweep_standings_wrapper,
+            trigger=IntervalTrigger(minutes=5),
+            id="standings_sweeper",
+            max_instances=1,
+            coalesce=True,
+            replace_existing=True,
+            next_run_time=datetime.now(timezone.utc) + timedelta(minutes=1),
+        )
+        log.info("data-foundation tiers wired: game_logs_nightly + game_logs_live + standings_sweeper")
+    else:
+        log.info("data-foundation tiers NOT wired: replay mode")
+
     _scheduler.start()
     log.info(
         "freshness scheduler started (mode=%s, tick=%ss)",
