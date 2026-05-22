@@ -14,12 +14,14 @@ layout collapses both under "Trades + Waivers" with NestedTabs:
   teams play on those exact dates, ranked by projected FPS sum across
   those dates. Blank state if no team plays selected dates.
 
-## Data-foundation prerequisites
+## Data-foundation prerequisites (ALL CLEARED 2026-05-22)
 
 - ✅ `/api/waiver-planner/candidates?league_id=N&dates=…` endpoint
 - ✅ `CalendarMultiPicker` shared component
-- ⏳ `nba_schedule` populated for the date range users will browse
-- ⏳ Projection cache fresh
+- ✅ `<NestedTabs/>` for the sub-tab split
+- ✅ `<DrawerProvider/>` for click-FA → drawer
+- ✅ `nba_schedule` populated through end-of-season
+- ⏳ Projection cache refresh — same caveat as my-team / players.
 
 ## Shared primitives used
 

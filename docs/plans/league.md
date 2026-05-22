@@ -12,14 +12,17 @@ Current League tab shows standings + scoring + settings. Add:
 - Date toggle on standings — show each manager's FPS that day.
 - League rules + scoring at the bottom (move from current location).
 
-## Data-foundation prerequisites
+## Data-foundation prerequisites (ALL CLEARED 2026-05-22)
 
 - ✅ `roster_at(team_id, date)` and `roster_at_for_league(league_id, date)`
 - ✅ `/api/standings?league_id=N&date=…` endpoint
 - ✅ `/api/teams/{team_id}/roster?date=…` endpoint
-- ⏳ `nba_game_logs` populated for the date range users will browse
-- ⏳ `standings_daily_cache` populated lazily — first read for any
-  (league, date) takes ~1-2s, subsequent reads are fast.
+- ✅ `nba_game_logs` backfilled for 2026-03-01 → 2026-03-15 (verified —
+  `Barakooda 146.9 FPS` on 3/8 via the agent's `get_standings_on_date`)
+- ✅ `standings_daily_cache` populated lazily on first read; sweeper
+  invalidates after game-log updates (runs every 5 min in both modes)
+- ✅ `<DrawerProvider/>` mounted for opponent roster drill-in
+- ✅ `<DateToggle/>` primitive
 
 ## Shared primitives used
 

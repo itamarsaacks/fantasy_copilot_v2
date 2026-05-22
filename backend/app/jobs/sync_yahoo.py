@@ -89,6 +89,24 @@ async def sync_league(user_id: int, league_id: int) -> SyncResult:
             result.errors.append(f"free_agents: {exc}")
             await session.rollback()
 
+        # --- 4. Auto-backfill recent game logs for new leagues ----------
+        # `schedule_initial_game_logs_backfill` self-gates on coverage —
+        # if this league already has recent data, it no-ops. For a brand
+        # new signup, kicks off ~30 days of historical pulls in the
+        # background so the user sees a populated drawer/standings within
+        # minutes instead of waiting for the nightly sync.
+        try:
+            from app.services.auto_backfill import (
+                schedule_initial_game_logs_backfill,
+            )
+            await schedule_initial_game_logs_backfill(league.id)
+        except Exception as exc:  # noqa: BLE001
+            log.warning(
+                "auto-backfill hook failed for league %s: %s",
+                league.league_key,
+                exc,
+            )
+
         return result
 
 

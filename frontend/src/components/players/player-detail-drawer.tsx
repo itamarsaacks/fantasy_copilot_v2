@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import type {
@@ -365,11 +365,28 @@ export function PlayerDetailDrawer({
     return parseISO(start) > todayD;
   }, [start]);
 
+  // Responsive: bottom sheet on mobile (more native + thumb-reach), side
+  // drawer on desktop. Tracks viewport with a matchMedia listener so a
+  // device-rotation mid-open doesn't strand the wrong layout.
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mq = window.matchMedia("(max-width: 640px)");
+    const sync = () => setIsMobile(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
-        side="right"
-        className="w-full overflow-y-auto sm:max-w-2xl"
+        side={isMobile ? "bottom" : "right"}
+        className={
+          isMobile
+            ? "h-[90vh] overflow-y-auto rounded-t-xl"
+            : "w-full overflow-y-auto sm:max-w-2xl"
+        }
       >
         <SheetHeader>
           <SheetTitle>{p?.name ?? playerName ?? "Player"}</SheetTitle>

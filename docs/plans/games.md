@@ -10,16 +10,19 @@ with team logos + scores. Click a game → box score. Click a player →
 shared player drawer. Date toggle (prev/next + last-7 picker).
 Sub-tab: NBA standings (conference tables).
 
-## Data-foundation prerequisites
+## Data-foundation prerequisites (CLEARED 2026-05-22 except NBA standings)
 
-- ✅ `nba_schedule` populated (already synced from ESPN)
-- ⏳ `nba_game_logs` populated for the relevant date — `sync_game_logs.py`
-  must have run or `python -m app.jobs.sync_game_logs backfill --from … --to …`
-- ✅ `/api/games?date=…` endpoint (in `backend/app/api/routes/games.py`)
+- ✅ `nba_schedule` populated (synced from ESPN)
+- ✅ `nba_game_logs` populated for 2026-03-01 → 2026-03-15 (10,785 rows)
+  + 2026-02 backfill running. New leagues auto-backfill 30 days on first sync.
+- ✅ `/api/games?date=…` endpoint
 - ✅ `/api/games/{id}/box?league_id=N` endpoint
-- ⏳ NBA standings endpoint — `/api/nba/standings` — NOT YET BUILT.
-  Plan to add: query `nba_schedule` for the current season, aggregate
-  win/loss per team, compute conference standings. No external source.
+- ✅ `<DateToggle/>`, `<TeamLogo/>` (with 30 placeholder SVGs), `<NestedTabs/>`
+- ✅ `/games` route stub already exists — replace the placeholder card
+  with the real scoreboard
+- ⏳ NBA standings endpoint `/api/nba/standings` — NOT YET BUILT. Plan
+  to add: aggregate `nba_schedule` rows for the current season, compute
+  win/loss per team, derive conference standings. No external source.
 
 ## Shared primitives used
 

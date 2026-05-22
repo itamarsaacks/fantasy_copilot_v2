@@ -4,20 +4,21 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   MessageCircle,
+  Calendar,
   Users,
   UserSquare,
   Trophy,
-  Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-// Mobile bottom nav: 5 items max (drop "Trades" — it's not in the MVP day-1 flow).
+// Mobile bottom nav: 5 items max (master plan §3 — drop Trades on mobile;
+// it's reachable via the Players → roster flow + the sidebar on desktop).
 const NAV_ITEMS = [
   { href: "/chat", label: "Chat", icon: MessageCircle },
-  { href: "/team", label: "Team", icon: Users },
-  { href: "/players", label: "Players", icon: UserSquare },
+  { href: "/games", label: "Games", icon: Calendar },
   { href: "/league", label: "League", icon: Trophy },
-  { href: "/waivers", label: "Waivers", icon: Sparkles },
+  { href: "/team", label: "My Team", icon: Users },
+  { href: "/players", label: "Players", icon: UserSquare },
 ];
 
 export function BottomNav() {

@@ -4,24 +4,27 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   MessageCircle,
+  Calendar,
   Users,
   UserSquare,
   Trophy,
   ArrowLeftRight,
-  Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { RecentChats } from "@/components/shell/recent-chats";
 import { useMe } from "@/lib/hooks/use-me";
 import { FlaskConical } from "lucide-react";
 
+// New tab order per master plan §1. /waivers folds into /trades as a
+// sub-tab once the trades-waiver session builds it; the standalone
+// /waivers route remains accessible until then so we don't break links.
 const NAV_ITEMS = [
   { href: "/chat", label: "Chat", icon: MessageCircle },
-  { href: "/team", label: "Team", icon: Users },
-  { href: "/players", label: "Players", icon: UserSquare },
+  { href: "/games", label: "Games", icon: Calendar },
   { href: "/league", label: "League", icon: Trophy },
+  { href: "/team", label: "My Team", icon: Users },
+  { href: "/players", label: "Players", icon: UserSquare },
   { href: "/trades", label: "Trades", icon: ArrowLeftRight },
-  { href: "/waivers", label: "Waivers", icon: Sparkles },
 ];
 
 const ADMIN_NAV_ITEMS = [

@@ -8,12 +8,16 @@ _Last updated: 2026-05-22_
 
 > **Active reformation:** the data-foundation rewrite (master plan
 > `~/.claude/plans/joyful-bubbling-dream.md`) is scaffolded on branch
-> `feature/data-foundation`. Six per-tab plans live in `docs/plans/`.
-> Once that branch lands, the inventories below need their next refresh.
-> See the latest entry in `SESSION_NOTES.md` for the full diff.
+> Foundation shipped on `main` (`b511c5f`, `34bfa4a`, `c30033e`).
+> Phase A + Phase A.5 prep work also shipped — auto-backfill triggers,
+> drawer migration, nav reshape, /games stub, team logo placeholders,
+> 522 player headshots, 10,785 game-log rows for 2026-03-01→15.
+> Six per-tab plans in `docs/plans/`. **Sidebar nav already reflects the
+> new layout** (Chat / Games / League / My Team / Players / Trades).
+> See latest entry in `SESSION_NOTES.md` for the full diff per turn.
 >
 > **New tabs target shape (per master plan §1):** Chat (existing) ·
-> Games (NEW) · League · My Team · Players · Trades+Waiver.
+> Games (placeholder) · League · My Team · Players · Trades+Waiver.
 
 ---
 
@@ -31,7 +35,21 @@ _Last updated: 2026-05-22_
 
 ---
 
-## Agent capabilities (current tool inventory — 15 tools)
+## Agent capabilities (current tool inventory — **21 tools**)
+
+> 15 original + 6 date-aware tools added by the reformation. The
+> agent's system prompt also bakes in `resolve_today()` so it knows
+> what year/date the user means when they say "yesterday" / "this week."
+
+**New date-aware tools (master plan §2.9):**
+- `get_games_on_date(date)` — NBA games + scores for a date
+- `get_standings_on_date(date)` — manager FPS on a specific date
+- `get_team_roster_on_date(team_id, date)` — point-in-time roster replay
+- `get_player_box_on_date(player_name, date)` — one player's actual game line
+- `simulate_lineup(out_names, in_names, dates)` — what-if FPS delta
+- `find_fas_playing_on_dates(dates, top_n)` — FAs ranked across calendar dates
+
+
 
 | Tool | Returns | Notes |
 |------|---------|-------|

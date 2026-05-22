@@ -83,8 +83,19 @@ async def get_active_player_set(db: AsyncSession) -> list[Player]:
 
 
 async def _pick_syncing_user(db: AsyncSession) -> User | None:
-    """We need any user's access_token to hit Yahoo. Game-log data is
-    NBA-global so it doesn't matter which user we borrow from."""
+    """Returns a non-broken user we can borrow a Yahoo token from.
+
+    Game-log data is NBA-global so it doesn't matter which user we use.
+    We prefer the most-recently-seen non-broken user — they're most
+    likely to have a fresh refresh token. If their token refresh fails
+    at fetch time, the caller can re-call us to get the NEXT candidate.
+
+    Note: this function intentionally only returns ONE user per call;
+    sync_logs_for_date does refresh-token validation up-front via
+    `get_fresh_access_token`, and if that raises, the whole sync aborts
+    for the date rather than silently failing per-player. For
+    auto-fallback across users, see `_pick_syncing_user_with_fallback`.
+    """
     q = (
         select(User)
         .where(User.auth_broken.is_(False))
@@ -93,6 +104,50 @@ async def _pick_syncing_user(db: AsyncSession) -> User | None:
         .limit(1)
     )
     return (await db.execute(q)).scalar_one_or_none()
+
+
+async def _pick_syncing_user_with_fallback(
+    db: AsyncSession,
+) -> tuple[User, str] | None:
+    """Pick a user AND refresh their Yahoo token. Falls through to the
+    next candidate on any refresh failure.
+
+    Returns (user, fresh_access_token) or None when no usable user exists.
+
+    Use this when starting a sync run — once we have a fresh token we hold
+    it for the whole batch. If Yahoo invalidates mid-run a per-call
+    fetch will fail (not our problem here), but the inner helpers retry.
+    """
+    from app.services.yahoo_auth import YahooAuthBroken, get_fresh_access_token
+
+    candidates = (
+        await db.execute(
+            select(User)
+            .where(User.auth_broken.is_(False))
+            .where(User.deleted_at.is_(None))
+            .order_by(User.last_seen_at.desc().nullslast())
+        )
+    ).scalars().all()
+
+    for user in candidates:
+        try:
+            token = await get_fresh_access_token(db, user)
+            return user, token
+        except YahooAuthBroken as e:
+            log.warning(
+                "sync_game_logs: skipping user %s (auth broken): %s",
+                user.id,
+                e,
+            )
+            continue
+        except Exception as e:  # noqa: BLE001
+            log.warning(
+                "sync_game_logs: token refresh failed for user %s: %s",
+                user.id,
+                e,
+            )
+            continue
+    return None
 
 
 async def sync_logs_for_date(
@@ -107,12 +162,15 @@ async def sync_logs_for_date(
     counts = {"players_attempted": 0, "logs_written": 0, "errors": 0}
 
     async with SessionLocal() as db:
-        user = await _pick_syncing_user(db)
-        if user is None:
-            log.warning("no usable user; skipping sync_game_logs for %s", on_date)
+        picked = await _pick_syncing_user_with_fallback(db)
+        if picked is None:
+            log.warning(
+                "no usable user (all auth_broken or refresh failed); "
+                "skipping sync_game_logs for %s",
+                on_date,
+            )
             return counts
-
-        access_token = await get_fresh_access_token(db, user)
+        user, access_token = picked
 
         players = await get_active_player_set(db)
         counts["players_attempted"] = len(players)

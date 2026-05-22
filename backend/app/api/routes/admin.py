@@ -94,3 +94,60 @@ async def compute_projections(
         "rows_skipped_no_stats": result.rows_skipped_no_stats,
         "errors": result.errors,
     }
+
+
+# ---------------------------------------------------------------------------
+# Data-foundation backfill endpoints (master plan §2 — production triggers)
+# ---------------------------------------------------------------------------
+
+
+@router.post("/backfill-game-logs")
+async def backfill_game_logs(
+    start: str,
+    end: str,
+    x_admin_secret: str | None = Header(default=None),
+):
+    """Fire a game-logs backfill for [start, end]. Runs in foreground —
+    returns when the entire range is synced. For ranges > 15 days expect
+    multi-minute responses; consider hitting in chunks.
+
+    `start` and `end` are YYYY-MM-DD. Source tag = 'admin_backfill'.
+    """
+    _require_admin(x_admin_secret)
+    from datetime import date as date_type
+
+    from app.jobs.sync_game_logs import backfill
+
+    try:
+        s = date_type.fromisoformat(start)
+        e = date_type.fromisoformat(end)
+    except ValueError as exc:
+        return {"error": f"bad date: {exc}"}
+    result = await backfill(s, e, source="admin_backfill")
+    return {"from": start, "to": end, "result": result}
+
+
+@router.post("/backfill-espn-ids")
+async def backfill_espn_ids(x_admin_secret: str | None = Header(default=None)):
+    """Fire the ESPN player-ID backfill (one-shot match against ESPN
+    rosters). Updates `players.espn_player_id` for any unmatched player.
+    Foreground — returns when done.
+    """
+    _require_admin(x_admin_secret)
+    from scripts.backfill_espn_player_ids import main as run
+
+    await run(dry_run=False, only_missing=True)
+    return {"status": "complete"}
+
+
+@router.post("/download-headshots")
+async def download_headshots(x_admin_secret: str | None = Header(default=None)):
+    """Fire the headshot download (downloads ESPN headshots, converts to
+    WebP, writes to `frontend/public/headshots/`, sets `headshot_path`).
+    Foreground — returns when done.
+    """
+    _require_admin(x_admin_secret)
+    from scripts.download_headshots import main as run
+
+    await run(only_missing=True)
+    return {"status": "complete"}

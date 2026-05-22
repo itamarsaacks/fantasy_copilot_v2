@@ -16,14 +16,16 @@ team logos (in `frontend/public/nba-logos/`), plus the
 Goal: replace the raw-text rendering in `<Message>` with
 `renderWithMentions` for assistant messages.
 
-## Data-foundation prerequisites
+## Data-foundation prerequisites (ALL CLEARED 2026-05-22)
 
 - ✅ `espn_player_id` + `headshot_path` on `players`
-- ⏳ Headshots downloaded (`backend/scripts/download_headshots.py` must
-  have run; otherwise PlayerAvatar falls back to initials — acceptable).
-- ⏳ NBA team logos in `frontend/public/nba-logos/<ABBR>.svg` — without
-  these, TeamLogo falls back to colored monograms (acceptable).
+- ✅ Headshots downloaded — 522 players in `frontend/public/headshots/`
+- ✅ NBA team logo placeholder SVGs — 30 monograms in `frontend/public/nba-logos/`
 - ✅ `PlayerChip`, `PlayerAvatar`, `TeamLogo`, `renderWithMentions` built
+- ✅ `GET /api/players/{league_id}/mention-context` endpoint built
+- ✅ `<DrawerProvider/>` mounted at app shell — `useDrawer().openPlayer(id)`
+  works anywhere
+- ✅ Chat agent's system prompt knows replay-mode current date
 
 ## Shared primitives used
 
@@ -33,20 +35,20 @@ Goal: replace the raw-text rendering in `<Message>` with
 ## Net new code
 
 **Backend:**
-- New endpoint `GET /api/players/mention-context?league_id=N` that
-  returns the lean known-players list (player_id, full_name, last_name,
-  position, nba_team_abbr, headshot_path) — used to feed `renderWithMentions`
-  context. Avoid serializing the full Players table on every chat render.
+- ✅ Endpoint already built — `GET /api/players/{league_id}/mention-context`
+  returns `{ league_id, players: [...], teams: [...] }`.
 - Optional (Risk #4 mitigation): extend the agent's chat response shape
   to include a `mentions[]` sidecar so the post-processor doesn't have
-  to fuzzy-match for ambiguous names.
+  to fuzzy-match for ambiguous names. Deferred — not needed for v1.
 
 **Frontend:**
 - `frontend/src/components/chat/message.tsx` — swap the raw markdown
   render for `renderWithMentions(text, ctx)` on assistant messages only
   (user-typed messages stay plain — they don't need chips).
-- Wire `onPlayerClick={(id) => open player drawer}` — drawer comes
-  from the Players tab session; until then, route to `/players?id=<id>`.
+- Wire `onPlayerClick={(id) => useDrawer().openPlayer(id)}` — uses the
+  shared `DrawerProvider` already mounted in the app shell.
+- New hook `useMentionContext(leagueId)` — TanStack Query against the
+  new endpoint with `staleTime: Infinity` (data changes daily at most).
 
 ## Phases
 

@@ -52,6 +52,120 @@ from app.services.yahoo_auth import get_fresh_access_token
 
 router = APIRouter(prefix="/api/players", tags=["players"])
 
+
+# ===========================================================================
+# Mention context — lean known-players list for chat-reply post-processing.
+# Used by frontend's `renderWithMentions(text, ctx)` to convert player + team
+# names in agent replies into clickable <PlayerChip/> elements.
+#
+# Lean = only what the chip needs: id, name, last_name, position, team, headshot.
+# Skips season stats, projections, news. Cacheable on the client per league.
+# ===========================================================================
+
+
+class MentionPlayer(BaseModel):
+    player_id: int
+    full_name: str
+    last_name: str | None
+    position: str | None
+    nba_team_abbr: str | None
+    headshot_path: str | None
+
+
+class MentionTeam(BaseModel):
+    abbr: str
+    full_name: str
+
+
+class MentionContextResponse(BaseModel):
+    league_id: int
+    players: list[MentionPlayer]
+    teams: list[MentionTeam]
+
+
+# 30 NBA teams. Static — used by the frontend trie. Kept here (not in DB)
+# because it never changes during a season.
+_NBA_TEAMS: list[tuple[str, str]] = [
+    ("ATL", "Atlanta Hawks"),
+    ("BOS", "Boston Celtics"),
+    ("BKN", "Brooklyn Nets"),
+    ("CHA", "Charlotte Hornets"),
+    ("CHI", "Chicago Bulls"),
+    ("CLE", "Cleveland Cavaliers"),
+    ("DAL", "Dallas Mavericks"),
+    ("DEN", "Denver Nuggets"),
+    ("DET", "Detroit Pistons"),
+    ("GSW", "Golden State Warriors"),
+    ("HOU", "Houston Rockets"),
+    ("IND", "Indiana Pacers"),
+    ("LAC", "LA Clippers"),
+    ("LAL", "Los Angeles Lakers"),
+    ("MEM", "Memphis Grizzlies"),
+    ("MIA", "Miami Heat"),
+    ("MIL", "Milwaukee Bucks"),
+    ("MIN", "Minnesota Timberwolves"),
+    ("NOP", "New Orleans Pelicans"),
+    ("NYK", "New York Knicks"),
+    ("OKC", "Oklahoma City Thunder"),
+    ("ORL", "Orlando Magic"),
+    ("PHI", "Philadelphia 76ers"),
+    ("PHX", "Phoenix Suns"),
+    ("POR", "Portland Trail Blazers"),
+    ("SAC", "Sacramento Kings"),
+    ("SAS", "San Antonio Spurs"),
+    ("TOR", "Toronto Raptors"),
+    ("UTA", "Utah Jazz"),
+    ("WAS", "Washington Wizards"),
+]
+
+
+@router.get("/{league_id}/mention-context", response_model=MentionContextResponse)
+async def mention_context(
+    league_id: int,
+    db: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> MentionContextResponse:
+    """Lean player + team list for frontend chat-mention post-processing.
+
+    Returns ~700 player rows + 30 team rows. Frontend should cache per league
+    (TanStack Query infinite staleTime is fine — the relevant fields change
+    only on Yahoo player metadata sync). Used by `renderWithMentions`.
+    """
+    # Auth: confirm caller owns this league
+    league = (
+        await db.execute(
+            select(League).where(
+                League.id == league_id, League.user_id == user.id
+            )
+        )
+    ).scalar_one_or_none()
+    if league is None:
+        raise HTTPException(404, "league not found")
+
+    # Players: filter to those eligible to be mentioned — rostered, drafted,
+    # or currently FA. Skips obscure free agents who'll never come up in chat.
+    # Bounded ≈ 700; cheap to ship.
+    rows = (
+        (await db.execute(select(Player).where(Player.full_name.isnot(None))))
+        .scalars()
+        .all()
+    )
+    return MentionContextResponse(
+        league_id=league_id,
+        players=[
+            MentionPlayer(
+                player_id=p.id,
+                full_name=p.full_name,
+                last_name=p.last_name,
+                position=p.primary_position,
+                nba_team_abbr=p.nba_team_abbr,
+                headshot_path=p.headshot_path,
+            )
+            for p in rows
+        ],
+        teams=[MentionTeam(abbr=a, full_name=n) for a, n in _NBA_TEAMS],
+    )
+
 # Yahoo stat-id → per-game column on the response
 STAT_COLUMNS = {
     "12": "pts",

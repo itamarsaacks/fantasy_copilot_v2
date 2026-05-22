@@ -58,6 +58,20 @@ async def lifespan(app: FastAPI):
     # event loop, before any agent invocation — but tests sometimes skip it.
     await agent_checkpointer.start()
     freshness.start()
+
+    # Production multi-user prep: check ESPN player IDs + headshot coverage,
+    # kick off backfills in the background if either is below threshold.
+    # Idempotent + non-blocking; safe to call every startup.
+    from app.services.auto_backfill import maybe_backfill_on_startup
+    try:
+        await maybe_backfill_on_startup()
+    except Exception as e:  # noqa: BLE001
+        # Never block startup on a backfill check failure.
+        import logging
+        logging.getLogger(__name__).warning(
+            "auto-backfill startup check failed: %s", e
+        )
+
     try:
         yield
     finally:

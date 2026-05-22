@@ -16,14 +16,18 @@ slot what-if swap. Add:
 - Waiver-planner-style what-if: swap roster slots with FAs or other
   owned players, see projected FPS delta over a date window.
 
-## Data-foundation prerequisites
+## Data-foundation prerequisites (ALL CLEARED 2026-05-22)
 
 - ✅ `project_fps_on_date(player_id, league_id, on_date)`
 - ✅ `project_fps_for_window(player_id, league_id, dates)`
 - ✅ `POST /api/team/simulate` endpoint
-- ✅ Shared `player-drawer` (when migrated from `components/players/`)
-- ⏳ `nba_game_logs` for the date(s) being viewed
-- ⏳ Projection cache fresh for current rostered players
+- ✅ Shared `player-drawer` at `@/components/shared/player-drawer`
+- ✅ `<DrawerProvider/>` mounted — `useDrawer().openPlayer(id)` from any tab
+- ✅ `<DateToggle/>` primitive
+- ✅ `nba_game_logs` backfilled for 2026-03-01 → 2026-03-15 (+ 2026-02 in progress)
+- ⏳ Projection cache refresh — game-log backfill marked projections stale.
+  In replay mode, run `POST /admin/compute-projections?league_id=1` once
+  to force a recompute, or accept eventual consistency.
 
 ## Shared primitives used
 

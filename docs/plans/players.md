@@ -12,13 +12,17 @@ history / news) + multi-player compare. Polish + new views:
 - **Timeline view** — per-player game-by-game trend across last N games.
 - **EOS projection card** — projected rest-of-season totals + per-game.
 
-## Data-foundation prerequisites
+## Data-foundation prerequisites (ALL CLEARED 2026-05-22 except wider backfill)
 
-- ✅ `nba_game_logs` schema + sync — need backfill for current+prior season
+- ✅ `nba_game_logs` schema + sync — 15 days backfilled (3/1–3/15, 10,785 rows).
+  Wider backfill (3+ months) recommended before this session but not blocking.
 - ✅ Game-logs accessor (`get_logs_for_player`)
-- ⏳ Move drawer from `components/players/` → `components/shared/`
-  (drawer must also work as a mobile bottom sheet)
-- ⏳ Projection refresh ran for full free-agent + rostered pool
+- ✅ Drawer migrated to `@/components/shared/player-drawer` + mobile bottom sheet
+- ✅ `<DrawerProvider/>` mounted — programmatic open from anywhere via `useDrawer()`
+- ✅ Headshots downloaded (PlayerAvatar shows real images for 522 players)
+- ⏳ Projection refresh — game-log backfill marked projections stale, but
+  worker hasn't recomputed yet. Run manually or trigger via the
+  freshness scheduler in live mode.
 
 ## Shared primitives used
 
