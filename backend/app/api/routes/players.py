@@ -215,6 +215,7 @@ class PlayerView(BaseModel):
     status_full: str | None
     injury_note: str | None
     image_url: str | None
+    headshot_path: str | None
     percent_owned: float | None
     percent_started: float | None
     projected_fps_per_game: float | None
@@ -330,6 +331,7 @@ async def get_players(
             Player.status_full,
             Player.injury_note,
             Player.image_url,
+            Player.headshot_path,
             Player.percent_owned,
             Player.percent_started,
             roster_sq.c.team_name,
@@ -505,6 +507,7 @@ async def get_players(
                 status_full=r.status_full,
                 injury_note=r.injury_note,
                 image_url=r.image_url,
+                headshot_path=r.headshot_path,
                 percent_owned=float(r.percent_owned) if r.percent_owned is not None else None,
                 percent_started=(
                     float(r.percent_started) if r.percent_started is not None else None
@@ -577,6 +580,7 @@ class PlayerDetailMeta(BaseModel):
     status_full: str | None
     injury_note: str | None
     image_url: str | None
+    headshot_path: str | None
     percent_owned: float | None
     percent_started: float | None
 
@@ -976,6 +980,7 @@ async def get_player_detail(
             status_full=player.status_full,
             injury_note=player.injury_note,
             image_url=player.image_url,
+            headshot_path=player.headshot_path,
             percent_owned=float(player.percent_owned) if player.percent_owned is not None else None,
             percent_started=float(player.percent_started) if player.percent_started is not None else None,
         ),

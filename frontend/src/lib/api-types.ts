@@ -57,6 +57,7 @@ export type PlayerDetailMeta = {
   status_full: string | null;
   injury_note: string | null;
   image_url: string | null;
+  headshot_path: string | null;
   percent_owned: number | null;
   percent_started: number | null;
 };
@@ -441,6 +442,7 @@ export type PlayerView = {
   status_full: string | null;
   injury_note: string | null;
   image_url: string | null;
+  headshot_path: string | null;
   percent_owned: number | null;
   percent_started: number | null;
   projected_fps_per_game: number | null;
