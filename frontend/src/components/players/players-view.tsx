@@ -13,6 +13,7 @@ import type {
 } from "@/lib/api-types";
 import { cn } from "@/lib/utils";
 import { PlayerDetailDrawer } from "@/components/players/player-detail-drawer";
+import { PlayerAvatar } from "@/components/shared/player-avatar";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -511,7 +512,14 @@ function PlayerRow({
         className="size-4 shrink-0 cursor-pointer accent-orange-500 disabled:cursor-not-allowed disabled:opacity-40"
       />
       {/* Name + meta column */}
-      <div className="min-w-0">
+      <div className="flex min-w-0 items-start gap-2.5">
+        <PlayerAvatar
+          name={p.name}
+          headshotPath={p.headshot_path}
+          size={32}
+          className="mt-0.5 shrink-0"
+        />
+        <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-baseline gap-2">
           <span className="truncate font-semibold">{p.name}</span>
           {p.status && (
@@ -591,6 +599,7 @@ function PlayerRow({
               </div>
             </div>
           ))}
+        </div>
         </div>
       </div>
 

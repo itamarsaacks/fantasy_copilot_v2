@@ -8,6 +8,7 @@ import { api } from "@/lib/api";
 import { useActiveLeague } from "@/lib/hooks/use-active-league";
 import type { PlayerDetailResponse } from "@/lib/api-types";
 import { cn } from "@/lib/utils";
+import { PlayerAvatar } from "@/components/shared/player-avatar";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -178,20 +179,28 @@ export default function ComparePage() {
               <th className="px-4 py-2 text-left">Metric</th>
               {loaded.map((d) => (
                 <th key={d.player.id} className="px-4 py-2 text-left">
-                  <div className="flex flex-col">
-                    <span className="text-sm font-semibold text-foreground">
-                      {d.player.name}
-                    </span>
-                    <span className="text-[10px] text-muted-foreground">
-                      {d.player.nba_team ?? "—"} ·{" "}
-                      {d.ownership.state === "my_team"
-                        ? "On my team"
-                        : d.ownership.state === "on_team"
-                        ? `on ${d.ownership.team_name}`
-                        : d.ownership.state === "waivers"
-                        ? "Waivers"
-                        : "Free agent"}
-                    </span>
+                  <div className="flex items-center gap-2.5">
+                    <PlayerAvatar
+                      name={d.player.name}
+                      headshotPath={d.player.headshot_path}
+                      size={48}
+                      className="shrink-0"
+                    />
+                    <div className="flex flex-col">
+                      <span className="text-sm font-semibold text-foreground">
+                        {d.player.name}
+                      </span>
+                      <span className="text-[10px] text-muted-foreground">
+                        {d.player.nba_team ?? "—"} ·{" "}
+                        {d.ownership.state === "my_team"
+                          ? "On my team"
+                          : d.ownership.state === "on_team"
+                          ? `on ${d.ownership.team_name}`
+                          : d.ownership.state === "waivers"
+                          ? "Waivers"
+                          : "Free agent"}
+                      </span>
+                    </div>
                   </div>
                 </th>
               ))}

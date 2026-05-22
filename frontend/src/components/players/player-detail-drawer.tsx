@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { HorizontalOwnershipTimeline } from "@/components/players/ownership-timeline";
+import { PlayerAvatar } from "@/components/shared/player-avatar";
 
 // ---------------------------------------------------------------------------
 // Date helpers
@@ -389,7 +390,17 @@ export function PlayerDetailDrawer({
         }
       >
         <SheetHeader>
-          <SheetTitle>{p?.name ?? playerName ?? "Player"}</SheetTitle>
+          <SheetTitle>
+            <span className="flex items-center gap-3">
+              <PlayerAvatar
+                name={p?.name ?? playerName ?? "Player"}
+                headshotPath={p?.headshot_path ?? null}
+                size={48}
+                className="shrink-0"
+              />
+              <span>{p?.name ?? playerName ?? "Player"}</span>
+            </span>
+          </SheetTitle>
           <SheetDescription>
             {p ? (
               <span className="flex flex-wrap items-center gap-2 text-xs">
