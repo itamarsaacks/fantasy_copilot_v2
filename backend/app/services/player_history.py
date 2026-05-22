@@ -36,6 +36,28 @@ _YAHOO_DASH = "-"
 # need to issue N requests. Don't fan out unbounded — be neighborly.
 _MAX_CONCURRENT_FETCHES = 6
 
+# Yahoo periodically returns HTTP 999 ("blocked / rate-limited") during
+# bursty per-date pulls. We retry with backoff before giving up. Each
+# 999 elsewhere in the loop becomes a "fetch failed" sentinel — NOT a
+# `_no_game` placeholder — because writing _no_game would poison the
+# cache and prevent the row from ever being re-pulled (the
+# `_existing_logs` check sees a row and skips).
+_FETCH_RETRY_ATTEMPTS = 3
+_FETCH_RETRY_BACKOFF_SECONDS = (1.0, 3.0, 7.0)
+
+
+class _FetchFailedSentinel:
+    """Distinct from None — None means 'Yahoo said the player has no
+    stats for this date' (real DNP / off-day), Sentinel means 'Yahoo
+    request itself failed (999/timeout/parse error)'. Callers do NOT
+    write a placeholder row for Sentinel results; they let the missing
+    row trigger a re-fetch on the next sync."""
+
+    __slots__ = ()
+
+
+_FETCH_FAILED = _FetchFailedSentinel()
+
 
 def _is_valid_stat_value(v: Any) -> bool:
     if v is None:
@@ -178,30 +200,53 @@ async def fetch_and_cache_logs(
 
     semaphore = asyncio.Semaphore(_MAX_CONCURRENT_FETCHES)
 
-    async def _fetch_one(d: date_type) -> tuple[date_type, dict[str, float] | None]:
+    async def _fetch_one(
+        d: date_type,
+    ) -> tuple[date_type, dict[str, float] | None | _FetchFailedSentinel]:
+        """Returns:
+            (date, dict)        — real stats
+            (date, None)        — Yahoo replied, player has no game data
+                                  (legitimate DNP / off-day → write _no_game)
+            (date, _FETCH_FAILED) — Yahoo request itself failed
+                                  (999 / timeout / parse error → SKIP, do not
+                                   write a placeholder, leave the row absent
+                                   so the next sync retries)
+        """
         async with semaphore:
-            try:
-                resp = await yahoo_client.fetch_player_stats(
-                    access_token,
-                    [player.yahoo_player_key],
-                    coverage="date",
-                    date=d.isoformat(),
-                )
-            except Exception as exc:  # noqa: BLE001
-                log.warning(
-                    "Yahoo per-date fetch failed for player=%s date=%s: %s",
-                    player.yahoo_player_key,
-                    d,
-                    exc,
-                )
-                return d, None
-            rows = resp.get(player.yahoo_player_key) or []
-            return d, _stats_to_box(rows)
+            last_exc: Exception | None = None
+            for attempt in range(_FETCH_RETRY_ATTEMPTS):
+                try:
+                    resp = await yahoo_client.fetch_player_stats(
+                        access_token,
+                        [player.yahoo_player_key],
+                        coverage="date",
+                        date=d.isoformat(),
+                    )
+                    rows = resp.get(player.yahoo_player_key) or []
+                    return d, _stats_to_box(rows)
+                except Exception as exc:  # noqa: BLE001
+                    last_exc = exc
+                    if attempt < _FETCH_RETRY_ATTEMPTS - 1:
+                        await asyncio.sleep(_FETCH_RETRY_BACKOFF_SECONDS[attempt])
+            log.warning(
+                "Yahoo per-date fetch failed after %d attempts "
+                "for player=%s date=%s: %s",
+                _FETCH_RETRY_ATTEMPTS,
+                player.yahoo_player_key,
+                d,
+                last_exc,
+            )
+            return d, _FETCH_FAILED
 
     fetched = await asyncio.gather(*[_fetch_one(d) for d in missing_dates])
 
     rows_to_write: list[dict[str, Any]] = []
     for d, box in fetched:
+        # Fetch-failed (999 / timeout etc) — DO NOT write a row. Leaving
+        # the row absent makes the next sync retry instead of poisoning
+        # the cache with a fake _no_game placeholder.
+        if isinstance(box, _FetchFailedSentinel):
+            continue
         sched_row = sched_by_date.get(d)
         if sched_row is not None:
             game_id = sched_row.game_id
