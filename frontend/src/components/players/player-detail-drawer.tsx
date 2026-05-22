@@ -4,10 +4,12 @@ import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import type {
+  OwnershipInterval,
   OwnershipTimelineResponse,
   PlayerDetailResponse,
   PlayerGameLogRow,
   PlayerProjectedGameRow,
+  PlayerStatsAggregate,
 } from "@/lib/api-types";
 import {
   Dialog,
@@ -70,6 +72,12 @@ type Preset = {
   label: string;
   compute: () => { start: string; end: string };
 };
+
+// 2025-26 NBA regular season start. Used by the Stats-tab "Season" toggle to
+// fetch season-wide aggregates. Update each October to the new season's
+// opening day. Could move to backend health response later for true single
+// source of truth.
+const SEASON_START_ISO = "2025-10-21";
 
 // Anchor-aware date helpers — every "today" in this file must respect
 // replay mode via the `anchor` Date (sourced from useAppToday). NEVER use
@@ -320,6 +328,88 @@ function GameLogTable({
 }
 
 // ---------------------------------------------------------------------------
+// Segment summary card — sits below the ownership timeline on the History tab.
+// When the user clicks a timeline segment, the parent updates the active date
+// range to that segment's bounds; this card surfaces per-segment averages
+// inline (so the user doesn't have to flip back to the Stats tab to see them)
+// plus a "View on Stats →" jump if they want the full breakdown.
+// ---------------------------------------------------------------------------
+
+function SegmentSummaryCard({
+  intervals,
+  start,
+  end,
+  actual,
+  onViewFullStats,
+}: {
+  intervals: OwnershipInterval[];
+  start: string;
+  end: string;
+  actual: PlayerStatsAggregate | null;
+  onViewFullStats: () => void;
+}) {
+  // Match the active range to a timeline segment by ISO-day prefix.
+  // Open-ended (still-owned) segments compare on start only.
+  const match = intervals.find((iv) => {
+    const ivStart = iv.started_at.slice(0, 10);
+    const ivEnd = (iv.ended_at ?? "").slice(0, 10);
+    return ivStart === start && (ivEnd === end || (!iv.ended_at && end >= start));
+  });
+
+  if (!match) {
+    return (
+      <p className="mt-3 text-[11px] text-muted-foreground">
+        Click a segment to see that period&apos;s stats inline.
+      </p>
+    );
+  }
+
+  const teamLabel = match.team_name ?? "Free agent";
+  const rangeLabel = `${fmtDateShort(match.started_at)} → ${
+    match.ended_at ? fmtDateShort(match.ended_at) : "now"
+  }`;
+
+  return (
+    <div className="mt-3 rounded-lg border border-foreground/10 bg-card p-3">
+      <div className="mb-2 flex items-baseline justify-between gap-2">
+        <div className="min-w-0">
+          <div className="truncate text-sm font-semibold">{teamLabel}</div>
+          <div className="text-[11px] text-muted-foreground">{rangeLabel}</div>
+        </div>
+        <button
+          type="button"
+          onClick={onViewFullStats}
+          className="shrink-0 rounded-md border border-foreground/15 px-2 py-1 text-[11px] hover:bg-foreground/5"
+        >
+          View on Stats →
+        </button>
+      </div>
+
+      {actual && actual.games_played > 0 ? (
+        <div className="grid grid-cols-4 gap-2 sm:grid-cols-8">
+          <StatCell label="GP" value={String(actual.games_played)} />
+          <StatCell
+            label="FPS/g"
+            value={fmtNum(actual.fantasy_points_per_game)}
+            emphasize
+          />
+          <StatCell label="MIN" value={fmtNum(actual.per_game.min, 1)} />
+          <StatCell label="PTS" value={fmtNum(actual.per_game.pts)} />
+          <StatCell label="REB" value={fmtNum(actual.per_game.reb)} />
+          <StatCell label="AST" value={fmtNum(actual.per_game.ast)} />
+          <StatCell label="ST" value={fmtNum(actual.per_game.stl)} />
+          <StatCell label="BLK" value={fmtNum(actual.per_game.blk)} />
+        </div>
+      ) : (
+        <p className="text-[11px] text-muted-foreground">
+          No games played in this range yet.
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main drawer
 // ---------------------------------------------------------------------------
 
@@ -345,6 +435,11 @@ export function PlayerDetailDrawer({
   const [start, setStart] = useState<string>("");
   const [end, setEnd] = useState<string>("");
   const [tab, setTab] = useState<"stats" | "schedule" | "history" | "news">("stats");
+  // Stats-tab sub-toggle: are we showing aggregates for the active date range
+  // ("period") or season-to-date ("season"). Season fires its own query
+  // against [SEASON_START_ISO, today] so the period query stays whatever the
+  // user picked. Replay-aware via anchorISO.
+  const [statsView, setStatsView] = useState<"period" | "season">("period");
 
   // Default range = "Last 30" anchored at appToday. We re-seed if appToday
   // changes (which can happen if AS_OF_DATE flips mid-session in dev).
@@ -361,6 +456,20 @@ export function PlayerDetailDrawer({
         `/api/players/${leagueId}/${playerId}?start=${start}&end=${end}`,
       ),
     enabled: open && !!leagueId && !!playerId && !!start && !!end,
+  });
+
+  // Season-wide query — fires only when the user flips to Season mode.
+  // Reuses the same endpoint with a season-start range so the existing
+  // `actual` aggregate semantics carry over without backend changes.
+  const seasonQ = useQuery<PlayerDetailResponse>({
+    queryKey: ["player-detail-season", leagueId, playerId, appToday?.toISOString()],
+    queryFn: () =>
+      api<PlayerDetailResponse>(
+        `/api/players/${leagueId}/${playerId}?start=${SEASON_START_ISO}&end=${anchorISO(anchor)}`,
+      ),
+    enabled:
+      open && !!leagueId && !!playerId && statsView === "season" && !!appToday,
+    staleTime: 5 * 60 * 1000,
   });
 
   const ownershipQ = useQuery<OwnershipTimelineResponse>({
@@ -530,37 +639,85 @@ export function PlayerDetailDrawer({
 
           {tab === "stats" && (
             <section className="space-y-4">
-              {/* Actuals summary (when range overlaps past) */}
-              {!isFutureOnly && a && (
+              {/* Period / Season toggle — picks which aggregate fills the
+                  card below. Season fires its own query (above) against the
+                  season-start range; Period uses the active date range. */}
+              <div className="flex items-center gap-2">
+                <div className="inline-flex rounded-md border border-foreground/15 bg-card p-0.5 text-[11px]">
+                  <button
+                    type="button"
+                    onClick={() => setStatsView("period")}
+                    className={cn(
+                      "rounded px-2 py-1",
+                      statsView === "period"
+                        ? "bg-foreground/10 font-semibold"
+                        : "text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    Selected period
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setStatsView("season")}
+                    className={cn(
+                      "rounded px-2 py-1",
+                      statsView === "season"
+                        ? "bg-foreground/10 font-semibold"
+                        : "text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    Season
+                  </button>
+                </div>
+                {statsView === "season" && seasonQ.isLoading && (
+                  <span className="text-[10px] text-muted-foreground">
+                    Loading season…
+                  </span>
+                )}
+              </div>
+
+              {/* Actuals summary — `display` picks the right aggregate per
+                  toggle. Period mode suppresses when range is future-only. */}
+              {(() => {
+                const display =
+                  statsView === "season"
+                    ? seasonQ.data?.actual ?? null
+                    : a ?? null;
+                const showCard =
+                  display !== null &&
+                  (statsView === "season" || !isFutureOnly);
+                if (!showCard || !display) return null;
+                return (
                 <div>
                   <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Actual — {a.games_played} game
-                    {a.games_played === 1 ? "" : "s"} played
+                    {statsView === "season" ? "Season" : "Actual"} —{" "}
+                    {display.games_played} game
+                    {display.games_played === 1 ? "" : "s"} played
                   </h3>
                   <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
                     <StatCell
                       label="FPS/g"
-                      value={fmtNum(a.fantasy_points_per_game)}
+                      value={fmtNum(display.fantasy_points_per_game)}
                       emphasize
                     />
-                    <StatCell label="MIN" value={fmtNum(a.per_game.min, 1)} />
-                    <StatCell label="PTS" value={fmtNum(a.per_game.pts)} />
-                    <StatCell label="REB" value={fmtNum(a.per_game.reb)} />
-                    <StatCell label="AST" value={fmtNum(a.per_game.ast)} />
-                    <StatCell label="ST" value={fmtNum(a.per_game.stl)} />
-                    <StatCell label="BLK" value={fmtNum(a.per_game.blk)} />
-                    <StatCell label="TO" value={fmtNum(a.per_game.tov)} />
+                    <StatCell label="MIN" value={fmtNum(display.per_game.min, 1)} />
+                    <StatCell label="PTS" value={fmtNum(display.per_game.pts)} />
+                    <StatCell label="REB" value={fmtNum(display.per_game.reb)} />
+                    <StatCell label="AST" value={fmtNum(display.per_game.ast)} />
+                    <StatCell label="ST" value={fmtNum(display.per_game.stl)} />
+                    <StatCell label="BLK" value={fmtNum(display.per_game.blk)} />
+                    <StatCell label="TO" value={fmtNum(display.per_game.tov)} />
                   </div>
                   <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] text-muted-foreground">
                     <span>
                       Total FPS:{" "}
                       <span className="font-semibold text-foreground">
-                        {fmtNum(a.fantasy_points_total)}
+                        {fmtNum(display.fantasy_points_total)}
                       </span>
                     </span>
                     <span>
-                      Totals — pts {fmtNum(a.totals.pts, 0)} / reb{" "}
-                      {fmtNum(a.totals.reb, 0)} / ast {fmtNum(a.totals.ast, 0)}
+                      Totals — pts {fmtNum(display.totals.pts, 0)} / reb{" "}
+                      {fmtNum(display.totals.reb, 0)} / ast {fmtNum(display.totals.ast, 0)}
                     </span>
                   </div>
 
@@ -568,10 +725,11 @@ export function PlayerDetailDrawer({
                     <h4 className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
                       Game log
                     </h4>
-                    <GameLogTable rows={a.games_log} kind="actual" />
+                    <GameLogTable rows={display.games_log} kind="actual" />
                   </div>
                 </div>
-              )}
+                );
+              })()}
 
               {/* Projection summary (when range overlaps future) */}
               {proj && proj.games_projected > 0 && (
@@ -649,14 +807,20 @@ export function PlayerDetailDrawer({
                 </p>
               )}
               {ownershipQ.isSuccess && (
-                <HorizontalOwnershipTimeline
-                  intervals={ownershipQ.data.intervals}
-                  selectedRange={{ start, end }}
-                  onPickRange={(s, e) => {
-                    onPickRange(s, e);
-                    setTab("stats");
-                  }}
-                />
+                <>
+                  <HorizontalOwnershipTimeline
+                    intervals={ownershipQ.data.intervals}
+                    selectedRange={{ start, end }}
+                    onPickRange={onPickRange}
+                  />
+                  <SegmentSummaryCard
+                    intervals={ownershipQ.data.intervals}
+                    start={start}
+                    end={end}
+                    actual={a ?? null}
+                    onViewFullStats={() => setTab("stats")}
+                  />
+                </>
               )}
               {ownershipQ.isError && (
                 <p className="text-xs text-red-400">
