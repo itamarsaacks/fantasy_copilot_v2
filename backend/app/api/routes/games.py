@@ -176,6 +176,12 @@ async def box_score(
     away_lines: list[BoxLine] = []
     for log_row, player in logs:
         box = log_row.box or {}
+        # `_no_game` is a sync-job sentinel for "no Yahoo per-date stats response."
+        # These rows aren't real participants — skip them. The upstream cleanup
+        # (don't write _no_game stubs to nba_game_logs at all) is a follow-up
+        # for the games-tab session.
+        if "_no_game" in box:
+            continue
         stats = {k: float(v) for k, v in box.items() if isinstance(v, (int, float))}
         fps: float | None = None
         if valuator is not None and stats and not log_row.did_not_play:
