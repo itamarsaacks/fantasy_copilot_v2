@@ -19,6 +19,7 @@ import {
 import { cn } from "@/lib/utils";
 import { HorizontalOwnershipTimeline } from "@/components/players/ownership-timeline";
 import { PlayerAvatar } from "@/components/shared/player-avatar";
+import { useAppToday } from "@/lib/hooks/use-app-today";
 
 // ---------------------------------------------------------------------------
 // Date helpers
@@ -70,54 +71,62 @@ type Preset = {
   compute: () => { start: string; end: string };
 };
 
-function todayISO(): string {
-  return toISODate(new Date());
+// Anchor-aware date helpers — every "today" in this file must respect
+// replay mode via the `anchor` Date (sourced from useAppToday). NEVER use
+// `new Date()` directly here; the previous version did, which caused
+// "Last 30" to mean Apr 22→May 22 in replay mode and showed players as
+// DNP for the whole window (the Mitchell-only-2-games bug).
+function anchorISO(anchor: Date): string {
+  return toISODate(anchor);
 }
 
-function daysAgoISO(days: number): string {
-  const d = new Date();
+function daysAgoFrom(anchor: Date, days: number): string {
+  const d = new Date(anchor);
   d.setDate(d.getDate() - days);
   return toISODate(d);
 }
 
-function daysAheadISO(days: number): string {
-  const d = new Date();
+function daysAheadFrom(anchor: Date, days: number): string {
+  const d = new Date(anchor);
   d.setDate(d.getDate() + days);
   return toISODate(d);
 }
 
-const PRESETS: Preset[] = [
-  {
-    id: "l7",
-    label: "Last 7",
-    compute: () => ({ start: daysAgoISO(7), end: todayISO() }),
-  },
-  {
-    id: "l14",
-    label: "Last 14",
-    compute: () => ({ start: daysAgoISO(14), end: todayISO() }),
-  },
-  {
-    id: "l30",
-    label: "Last 30",
-    compute: () => ({ start: daysAgoISO(30), end: todayISO() }),
-  },
-  {
-    id: "season",
-    label: "Last 90",
-    compute: () => ({ start: daysAgoISO(90), end: todayISO() }),
-  },
-  {
-    id: "next7",
-    label: "Next 7",
-    compute: () => ({ start: todayISO(), end: daysAheadISO(7) }),
-  },
-  {
-    id: "next14",
-    label: "Next 14",
-    compute: () => ({ start: todayISO(), end: daysAheadISO(14) }),
-  },
-];
+function buildPresets(anchor: Date): Preset[] {
+  const today = anchorISO(anchor);
+  return [
+    {
+      id: "l7",
+      label: "Last 7",
+      compute: () => ({ start: daysAgoFrom(anchor, 7), end: today }),
+    },
+    {
+      id: "l14",
+      label: "Last 14",
+      compute: () => ({ start: daysAgoFrom(anchor, 14), end: today }),
+    },
+    {
+      id: "l30",
+      label: "Last 30",
+      compute: () => ({ start: daysAgoFrom(anchor, 30), end: today }),
+    },
+    {
+      id: "season",
+      label: "Last 90",
+      compute: () => ({ start: daysAgoFrom(anchor, 90), end: today }),
+    },
+    {
+      id: "next7",
+      label: "Next 7",
+      compute: () => ({ start: today, end: daysAheadFrom(anchor, 7) }),
+    },
+    {
+      id: "next14",
+      label: "Next 14",
+      compute: () => ({ start: today, end: daysAheadFrom(anchor, 14) }),
+    },
+  ];
+}
 
 // ---------------------------------------------------------------------------
 // Sub-components
@@ -127,15 +136,18 @@ function DateRangePicker({
   start,
   end,
   onChange,
+  anchor,
 }: {
   start: string;
   end: string;
   onChange: (start: string, end: string) => void;
+  anchor: Date;
 }) {
+  const presets = useMemo(() => buildPresets(anchor), [anchor]);
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap items-center gap-1">
-        {PRESETS.map((p) => {
+        {presets.map((p) => {
           const r = p.compute();
           const active = r.start === start && r.end === end;
           return (
@@ -324,9 +336,23 @@ export function PlayerDetailDrawer({
   playerId: number | null;
   playerName?: string;
 }) {
-  const [start, setStart] = useState<string>(daysAgoISO(30));
-  const [end, setEnd] = useState<string>(todayISO());
+  // Anchor "today" = useAppToday's resolved date (replay-aware via /health).
+  // Falls back to real Date for SSR / before the hook resolves so the helpers
+  // never crash; the effect below resets start/end when appToday lands.
+  const { today: appToday } = useAppToday();
+  const anchor = appToday ?? new Date();
+
+  const [start, setStart] = useState<string>("");
+  const [end, setEnd] = useState<string>("");
   const [tab, setTab] = useState<"stats" | "schedule" | "history" | "news">("stats");
+
+  // Default range = "Last 30" anchored at appToday. We re-seed if appToday
+  // changes (which can happen if AS_OF_DATE flips mid-session in dev).
+  useEffect(() => {
+    if (!appToday) return;
+    setStart((prev) => prev || daysAgoFrom(appToday, 30));
+    setEnd((prev) => prev || anchorISO(appToday));
+  }, [appToday]);
 
   const detailQ = useQuery<PlayerDetailResponse>({
     queryKey: ["player-detail", leagueId, playerId, start, end],
@@ -334,7 +360,7 @@ export function PlayerDetailDrawer({
       api<PlayerDetailResponse>(
         `/api/players/${leagueId}/${playerId}?start=${start}&end=${end}`,
       ),
-    enabled: open && !!leagueId && !!playerId,
+    enabled: open && !!leagueId && !!playerId && !!start && !!end,
   });
 
   const ownershipQ = useQuery<OwnershipTimelineResponse>({
@@ -458,7 +484,12 @@ export function PlayerDetailDrawer({
             <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
               Date range
             </div>
-            <DateRangePicker start={start} end={end} onChange={onPickRange} />
+            <DateRangePicker
+              start={start}
+              end={end}
+              onChange={onPickRange}
+              anchor={anchor}
+            />
           </section>
 
           {detailQ.isError && (
