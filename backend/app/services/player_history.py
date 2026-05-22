@@ -23,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.connectors import yahoo as yahoo_client
 from app.db.models import NbaGameLog, NbaSchedule, Player, User
+from app.services.clock import resolve_today
 
 log = logging.getLogger(__name__)
 
@@ -149,7 +150,7 @@ async def fetch_and_cache_logs(
 
     Future games are never written as logs — projections handle those.
     """
-    today = today or datetime.now(timezone.utc).date()
+    today = today or resolve_today()
     if start > end:
         return []
     range_end_effective = min(end, today)

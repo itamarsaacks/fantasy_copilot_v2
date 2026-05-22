@@ -27,6 +27,14 @@ from app.agent.tools.analytics import (  # noqa: E402
     get_top_by_stat,
     get_top_players_overall,
 )
+from app.agent.tools.date_aware import (  # noqa: E402
+    find_fas_playing_on_dates,
+    get_games_on_date,
+    get_player_box_on_date,
+    get_standings_on_date,
+    get_team_roster_on_date,
+    simulate_lineup,
+)
 from app.agent.tools.free_agents import get_free_agents  # noqa: E402
 from app.agent.tools.injury import get_injury_status  # noqa: E402
 from app.agent.tools.league import get_league_summary  # noqa: E402
@@ -57,6 +65,13 @@ ALL_TOOLS = [
     get_injury_status,
     get_player_schedule,
     search_recent_news,
+    # Data foundation reformation tools (master plan §2.9)
+    get_games_on_date,
+    get_standings_on_date,
+    get_team_roster_on_date,
+    get_player_box_on_date,
+    simulate_lineup,
+    find_fas_playing_on_dates,
 ]
 
 MODEL = "anthropic:claude-sonnet-4-6"

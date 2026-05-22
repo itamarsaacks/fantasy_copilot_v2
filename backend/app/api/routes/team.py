@@ -40,6 +40,7 @@ from app.engine.projection import (
     _PointsValuator,
 )
 from app.security import get_current_user
+from app.services.clock import resolve_today
 
 router = APIRouter(prefix="/api/team", tags=["team"])
 
@@ -199,12 +200,12 @@ class TeamResponse(BaseModel):
 
 def _parse_date(value: str | None) -> date_type:
     if not value:
-        return datetime.now(timezone.utc).date()
+        return resolve_today()
     try:
         d = date_type.fromisoformat(value)
     except ValueError:
         raise HTTPException(status_code=400, detail=f"invalid date '{value}', expected YYYY-MM-DD")
-    today = datetime.now(timezone.utc).date()
+    today = resolve_today()
     delta = (d - today).days
     if delta > _MAX_FUTURE_DAYS:
         raise HTTPException(
@@ -308,7 +309,7 @@ async def get_team(
     # ------------------------------------------------------------------
     # Past dates: fetch what the players actually did from Yahoo
     # ------------------------------------------------------------------
-    today = datetime.now(timezone.utc).date()
+    today = resolve_today()
     is_past = target_date < today
     actuals_by_player_id: dict[int, tuple[SeasonStats, float | None]] = {}
 
@@ -319,23 +320,48 @@ async def get_team(
         elif league.scoring_type in CATEGORY_LEAGUE_TYPES:
             valuator = _CategoryValuator.from_settings(league.settings_json)
 
+        # Per master plan §2.3: prefer nba_game_logs (populated by
+        # background sync_game_logs.py). Fall back to Yahoo only in live
+        # mode when the DB has nothing for this date — transitional until
+        # backfill is run in production.
+        from app.services.game_logs import get_logs_for_players_on_date
+        from app.services.clock import is_replay_mode
+
         player_keys = [p.yahoo_player_key for _, p in roster_rows if p.yahoo_player_key]
         id_by_key = {p.yahoo_player_key: p.id for _, p in roster_rows if p.yahoo_player_key}
-        # Yahoo caps at 25 keys per call
-        try:
-            raw: dict[str, list[dict[str, Any]]] = {}
-            for i in range(0, len(player_keys), 25):
-                chunk = player_keys[i : i + 25]
-                batch = await yahoo_client.fetch_player_stats(
-                    user.access_token,
-                    chunk,
-                    coverage="date",
-                    date=target_date.isoformat(),
-                )
-                raw.update(batch)
-        except Exception as exc:  # noqa: BLE001
-            # Yahoo down or token expired — fall back to projection view.
-            raw = {}
+        key_by_id = {v: k for k, v in id_by_key.items()}
+
+        db_logs = await get_logs_for_players_on_date(
+            db, list(id_by_key.values()), target_date
+        )
+        raw: dict[str, list[dict[str, Any]]] = {}
+        for pid, log_row in db_logs.items():
+            pkey = key_by_id.get(pid)
+            if pkey is None or log_row.did_not_play:
+                continue
+            raw[pkey] = [
+                {"stat_id": sid, "value": v} for sid, v in (log_row.box or {}).items()
+            ]
+
+        if not raw and not is_replay_mode():
+            import logging
+            logging.getLogger(__name__).warning(
+                "FALLBACK: hitting Yahoo at request time for team %s on %s "
+                "— run sync_game_logs backfill to eliminate this path",
+                my_team.id, target_date,
+            )
+            try:
+                for i in range(0, len(player_keys), 25):
+                    chunk = player_keys[i : i + 25]
+                    batch = await yahoo_client.fetch_player_stats(
+                        user.access_token,
+                        chunk,
+                        coverage="date",
+                        date=target_date.isoformat(),
+                    )
+                    raw.update(batch)
+            except Exception:  # noqa: BLE001
+                raw = {}
 
         for pkey, stat_rows in raw.items():
             player_id = id_by_key.get(pkey)

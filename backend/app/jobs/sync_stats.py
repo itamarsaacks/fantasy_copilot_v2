@@ -25,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.connectors import yahoo
 from app.db.engine import SessionLocal
 from app.db.models import FreeAgent, League, Player, PlayerStats, RosterPlayer, Team, User
+from app.services.clock import resolve_today
 from app.services.yahoo_auth import YahooAuthBroken, get_fresh_access_token
 
 log = logging.getLogger(__name__)
@@ -102,7 +103,7 @@ async def sync_league_stats(
             return result
 
         scope = COVERAGE_TO_SCOPE[coverage]
-        as_of = date.today()
+        as_of = resolve_today()
         keys = list(all_players.keys())
 
         # Batch in chunks of 25

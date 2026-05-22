@@ -20,6 +20,7 @@ from sqlalchemy import or_, select
 from app.agent.tools._helpers import fold_ascii, get_context
 from app.db.engine import SessionLocal
 from app.db.models import League, NbaSchedule, Player
+from app.services.clock import resolve_today
 
 
 @tool
@@ -61,7 +62,7 @@ async def get_player_schedule(
 
         all_players = (await db.execute(select(Player))).scalars().all()
 
-        today = datetime.now(timezone.utc).date()
+        today = resolve_today()
         until = today + timedelta(days=days_ahead)
 
         # Pull every game in window once; bucket by team to share across players.

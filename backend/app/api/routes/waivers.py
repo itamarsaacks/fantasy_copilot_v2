@@ -39,6 +39,7 @@ from app.db.models import (
     User,
 )
 from app.security import get_current_user
+from app.services.clock import resolve_today
 
 router = APIRouter(prefix="/api/waivers", tags=["waivers"])
 
@@ -168,7 +169,7 @@ async def get_waivers(
     if my_team is None:
         raise HTTPException(404, "user's team not found in league")
 
-    today = datetime.now(timezone.utc).date()
+    today = resolve_today()
     window_end = today + timedelta(days=days_ahead)
 
     # ------------------------------------------------------------------

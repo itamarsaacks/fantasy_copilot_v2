@@ -9,6 +9,146 @@ the durable record of what shipped; this file is the human-readable
 
 ---
 
+## 2026-05-22 — Data foundation reformation prep (master plan + Steps 1–9 + frontend primitives)
+
+**Done this session:** (branch `feature/data-foundation`, NOT yet merged or committed — review diff first)
+
+This was a planning + scaffolding session. The user requested a major reformation
+of the app — 6 new tabs, Postgres-as-source-of-truth at request time, point-in-time
+roster reconstruction, replay-mode-aware date chokepoint, headshots+logos
+everywhere, clickable player chips in chat. The whole roadmap landed as a master
+plan in `~/.claude/plans/joyful-bubbling-dream.md`. All 9 data-foundation steps
+were scaffolded so per-tab sessions can focus on UX polish.
+
+**Master plan delivered:** `~/.claude/plans/joyful-bubbling-dream.md`
+  - §1 Context · §2 Data foundation (allow-list, schema, services, jobs, endpoints, agent tools)
+  - §3 Shared frontend primitives · §4 Tab roadmap · §5 tab-session skill spec
+  - §6 Replay-mode test plan · §7 Non-goals · §8 Risks
+
+**Step 0 — session-workflow skill:**
+- `.claude/skills/tab-session/SKILL.md` — every per-tab session reads this first
+
+**Step 1 — `resolve_today()` chokepoint:**
+- `backend/app/services/clock.py` (new) — `resolve_today()` + `is_replay_mode()`
+- `scripts/check_forbidden_sources.sh` (new) — CI guard: no `date.today()`, no
+  `stats.nba.com`, no `basketball-reference.com`
+- 6 call sites migrated (schedule.py, team.py ×2, players.py, waivers.py,
+  sync_schedule.py, sync_stats.py, player_history.py)
+- Verified: `resolve_today()` returns `2026-03-15` in replay mode ✓
+
+**Step 2 — Player ID backfill + headshot pipeline:**
+- `Player.espn_player_id` + `espn_player_id_confidence` + `headshot_path` added to model
+- `alembic/versions/e5f6a7b8c9d0_espn_player_id_and_headshot_path.py` (new)
+- `backend/scripts/backfill_espn_player_ids.py` (new) — walks 30 ESPN team rosters
+- `backend/scripts/download_headshots.py` (new) — WebP conversion to
+  `frontend/public/headshots/`. Requires Pillow.
+
+**Step 3 — `sync_game_logs` job + invalidations:**
+- `backend/app/jobs/sync_game_logs.py` (new) — tiered (live 30-min during NBA
+  evenings, nightly 3am ET, backfill CLI). Reuses `player_history.fetch_and_cache_logs`.
+- Active-player set computed via union of rostered + transacted + FA
+- Marks projections stale via `invalidate_for_players` after each batch
+- Enqueues `StandingsCacheInvalidation` rows
+
+**Step 4 — `roster_at()`:**
+- `backend/app/services/roster_history.py` (new) — replays draft +
+  `PlayerOwnershipEvent` rows to reconstruct any team's roster on any date.
+  Falls back to live `RosterPlayer` when no events exist for a team.
+
+**Step 5 — Postgres-only read paths:**
+- `backend/app/services/game_logs.py` (new) — `get_logs_for_player`,
+  `get_logs_for_players_on_date`. Both read `nba_game_logs` only.
+- `players.py:683` and `team.py:329` rewritten to prefer DB, fall back to Yahoo
+  ONLY in live mode + only when DB is empty for that date. Replay mode = strict.
+- After production backfill runs, the fallback gets deleted (see CI guard).
+
+**Step 6 — Projection invalidation + per-date projections:**
+- `backend/app/services/projection_invalidation.py` (new) — `invalidate_for_player(s)`
+- `backend/app/services/projection_window.py` (new) — `project_fps_on_date`,
+  `project_fps_for_window`. Formula: `per_game × games_on_date` (no new math).
+
+**Step 7 — Standings cache + sweeper:**
+- `StandingsDailyCache`, `StandingsCacheInvalidation`, `BackfillCursor` models added
+- `alembic/versions/f6a7b8c9d0e1_data_foundation_tables.py` (new) — also adds
+  `nba_game_logs.did_not_play` + `source` columns
+- `backend/app/services/standings.py` (new) — `standings_at(league_id, date)` +
+  `sweep_standings_invalidations()` (drain every 5 min via APScheduler — needs
+  wiring in `freshness.py` in a follow-up).
+
+**Step 8 — New endpoints:**
+- `backend/app/api/routes/games.py` (new) — `/api/games`, `/api/games/{id}/box`
+- `backend/app/api/routes/foundation.py` (new) — `/api/standings`,
+  `/api/teams/{team_id}/roster`, `/api/waiver-planner/candidates`,
+  `/api/team/simulate`
+- Both routers registered in `backend/app/main.py`
+
+**Step 9 — Six new agent tools:**
+- `backend/app/agent/tools/date_aware.py` (new) — `get_games_on_date`,
+  `get_standings_on_date`, `get_team_roster_on_date`, `get_player_box_on_date`,
+  `simulate_lineup`, `find_fas_playing_on_dates`
+- Registered in `ALL_TOOLS` (now 21 tools)
+- Prompt-level rule added: agent doesn't use `write_file`/`edit_file`/`execute`
+  (deepagents doesn't expose a toggle; prompt constraint is the v1 mitigation)
+
+**Frontend primitives (master plan §3):**
+- `frontend/src/lib/date-utils.ts` (new) — consolidated date helpers
+- `frontend/src/lib/render-with-mentions.tsx` (new) — chat-reply chip post-processor
+- `frontend/src/components/shared/team-logo.tsx`
+- `frontend/src/components/shared/player-avatar.tsx`
+- `frontend/src/components/shared/player-chip.tsx`
+- `frontend/src/components/shared/date-toggle.tsx`
+- `frontend/src/components/shared/calendar-multi-picker.tsx`
+- `frontend/src/components/shared/nested-tabs.tsx`
+- `frontend/src/lib/hooks/use-active-league.ts` — REWRITTEN as module-level
+  store (preserves localStorage + chat-reset null-transition guard). Mirrors
+  pattern in `use-chat-state.ts`. Should eliminate the latent race in every
+  other consumer.
+- `frontend/public/nba-logos/` + `frontend/public/headshots/` (empty dirs)
+
+**Tab plan stubs landed in `docs/plans/`:**
+chat-mentions, players, games, my-team, league, trades-waiver. Each has
+Context, Prereqs, Phases, Verification, Out-of-scope sections so the per-tab
+session opens cleanly.
+
+**Branch state:** Everything sits uncommitted on `feature/data-foundation`.
+No migrations have been run (Docker daemon was off during the session).
+No smoke test was run for the same reason.
+
+**Next session should:**
+
+1. Start Docker + Postgres: `docker compose up -d`
+2. Start backend: `cd backend && uvicorn app.main:app --reload --port 8000`
+3. Run migrations: `cd backend && alembic upgrade head` — confirms the two
+   new migrations (`e5f6a7b8c9d0`, `f6a7b8c9d0e1`) apply clean
+4. Run forbidden-sources CI guard: `bash scripts/check_forbidden_sources.sh`
+5. Run smoke test: `bash scripts/smoke.sh`
+6. **Decide commit strategy:** all of this as one foundation commit, or
+   per-step commits? My recommendation: one commit "Data foundation
+   reformation Steps 1–9 + shared primitives" so the master plan is
+   land-or-revert atomic. The diff is large but the changes are coherent.
+7. Backfill steps (long-running, one-shot):
+   - `cd backend && python -m scripts.backfill_espn_player_ids`
+   - `cd backend && python -m scripts.download_headshots` (needs Pillow installed)
+   - `cd backend && python -m app.jobs.sync_game_logs backfill --from 2026-03-01 --to 2026-03-15`
+8. Then open `/tab-session chat-mentions` to start the first per-tab session.
+
+**In flight / known gaps:**
+- `freshness.py` doesn't yet schedule the new `sync_game_logs` tiers or the
+  standings sweeper — wire them in a follow-up. (The job is invokable via
+  CLI today, just not auto-scheduled.)
+- NBA team logo SVGs in `frontend/public/nba-logos/` are not committed
+  (TeamLogo falls back to colored monogram). Source: Wikimedia Commons; the
+  per-tab sessions can add them as needed.
+- Headshots are not pre-downloaded (PlayerAvatar falls back to initials).
+- `useActiveLeague` rewrite is in place but the existing consumers
+  (Conversation, etc.) should be smoke-tested for the chat-reset bug since
+  the underlying `checkLeagueChanged` guard now sits on top of a different
+  state shape.
+- Live-mode Yahoo fallback in `players.py` and `team.py` is intentional
+  for transition. Remove + tighten CI guard once production backfill runs.
+
+---
+
 ## 2026-05-17 → 2026-05-18 — Five product tabs + eval dashboard + Players v2 detail experience all shipped
 
 **Done this session:** (full log in `docs/SESSION_2026-05-17.md`, 18 commits, HEAD `07a4e5d`)

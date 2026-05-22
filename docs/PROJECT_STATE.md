@@ -4,7 +4,16 @@
 > what's missing." Read this before authoring eval cases, planning UI work,
 > or scoping new features. Update whenever scope shifts.
 
-_Last updated: 2026-05-17_
+_Last updated: 2026-05-22_
+
+> **Active reformation:** the data-foundation rewrite (master plan
+> `~/.claude/plans/joyful-bubbling-dream.md`) is scaffolded on branch
+> `feature/data-foundation`. Six per-tab plans live in `docs/plans/`.
+> Once that branch lands, the inventories below need their next refresh.
+> See the latest entry in `SESSION_NOTES.md` for the full diff.
+>
+> **New tabs target shape (per master plan §1):** Chat (existing) ·
+> Games (NEW) · League · My Team · Players · Trades+Waiver.
 
 ---
 

@@ -33,6 +33,8 @@ from app.api.routes import admin_evals as admin_evals_routes
 from app.api.routes import auth as auth_routes
 from app.api.routes import chat as chat_routes
 from app.api.routes import conversations as conversation_routes
+from app.api.routes import foundation as foundation_routes
+from app.api.routes import games as games_routes
 from app.api.routes import league as league_routes
 from app.api.routes import players as players_routes
 from app.api.routes import team as team_routes
@@ -133,6 +135,9 @@ app.include_router(waivers_routes.router)
 app.include_router(league_routes.router)
 app.include_router(trades_routes.router)
 app.include_router(admin_evals_routes.router)
+# Data foundation reformation (master plan §2.8)
+app.include_router(games_routes.router)
+app.include_router(foundation_routes.router)
 
 
 @app.get("/health")

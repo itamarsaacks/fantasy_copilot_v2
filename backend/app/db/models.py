@@ -186,6 +186,24 @@ class Player(Base):
     image_url: Mapped[str | None] = mapped_column(String, nullable=True)
     uniform_number: Mapped[str | None] = mapped_column(String, nullable=True)
 
+    # ESPN player ID — populated by backfill_espn_player_ids.py (master plan §2.1).
+    # Used to (a) source headshots from ESPN's roster endpoint and (b) link
+    # to ESPN player pages in the UI. We map Yahoo → ESPN by
+    # (normalized_name, nba_team_abbr) matching; confidence records how the
+    # match was found. Nullable because some rookies / two-way players won't
+    # match cleanly; the nightly reconcile retries unmatched rows.
+    espn_player_id: Mapped[int | None] = mapped_column(
+        Integer, unique=True, nullable=True, index=True
+    )
+    espn_player_id_confidence: Mapped[str | None] = mapped_column(
+        String, nullable=True
+    )  # 'exact' | 'fuzzy' | 'manual' | NULL
+    # Relative path under frontend/public/headshots/, e.g. "lebron-james-1966.webp".
+    # NULL = no headshot downloaded yet; frontend falls back to colored initials.
+    # Pre-downloaded by scripts/download_headshots.py and committed to the
+    # repo so the app has zero runtime third-party headshot dependency.
+    headshot_path: Mapped[str | None] = mapped_column(String, nullable=True)
+
     # Yahoo-global ownership signals (latest known value at last sync).
     percent_owned: Mapped[float | None] = mapped_column(Numeric(5, 2), nullable=True)
     percent_owned_delta: Mapped[float | None] = mapped_column(Numeric(5, 2), nullable=True)
@@ -314,6 +332,18 @@ class NbaGameLog(Base):
     # The full boxscore lives in JSONB so we don't have to migrate every time
     # we want a new stat line column.
     box: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    # True = player was on the active list but did not play (or had a 0/0/0
+    # line); written as a placeholder by sync_game_logs so a subsequent date
+    # query doesn't re-fetch from Yahoo every time.
+    did_not_play: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+    # 'yahoo' (normal nightly sync) | 'backfill' (one-shot backfill script).
+    # Lets us distinguish backfill data from production sync if we ever need
+    # to wipe and re-pull.
+    source: Mapped[str] = mapped_column(
+        String, nullable=False, default="yahoo", server_default="yahoo"
+    )
 
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
@@ -669,4 +699,88 @@ class EvalCaseResult(Base):
 
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+# ===========================================================================
+# Data foundation reformation tables (master plan §2.6, §2.10)
+# ===========================================================================
+
+
+class StandingsDailyCache(Base):
+    """Lazy per-(league, team, date) cached fantasy-points total.
+
+    Populated on first read by `services.standings.standings_at(league_id, date)`.
+    Invalidated via `StandingsCacheInvalidation` sweeper after game-log changes.
+    Not authoritative — always rebuildable from `nba_game_logs` + `roster_at`.
+    """
+
+    __tablename__ = "standings_daily_cache"
+
+    league_id: Mapped[int] = mapped_column(
+        ForeignKey("leagues.id", ondelete="CASCADE"), primary_key=True
+    )
+    team_id: Mapped[int] = mapped_column(
+        ForeignKey("teams.id", ondelete="CASCADE"), primary_key=True
+    )
+    on_date: Mapped[date] = mapped_column(Date, primary_key=True)
+    fps_total: Mapped[float] = mapped_column(Numeric(12, 4), nullable=False, default=0)
+    computed_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class StandingsCacheInvalidation(Base):
+    """Pending invalidation rows enqueued by sync_game_logs after batch commit.
+
+    A 5-min sweeper deletes affected `StandingsDailyCache` rows then deletes
+    the invalidation rows. Sweeper-based instead of DB triggers because
+    asyncpg + SQLAlchemy don't play well with Python-callback triggers.
+    """
+
+    __tablename__ = "standings_cache_invalidations"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    league_id: Mapped[int | None] = mapped_column(
+        ForeignKey("leagues.id", ondelete="CASCADE"), index=True, nullable=True
+    )
+    on_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    # When NULL league_id: invalidate this date across all leagues (used
+    # when a game log lands and we don't know which leagues are affected).
+    enqueued_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class BackfillCursor(Base):
+    """Resumable backfill progress.
+
+    Long-running backfill jobs (game_logs over 2 seasons, transactions per
+    league, headshot downloads) write a cursor row keyed by (job_name, scope)
+    so a restart picks up from `last_completed_at` instead of from scratch.
+    """
+
+    __tablename__ = "backfill_cursor"
+    __table_args__ = (
+        UniqueConstraint("job_name", "scope", name="uq_backfill_cursor_job_scope"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    job_name: Mapped[str] = mapped_column(String, nullable=False)
+    # Free-form scope: a league_key, a player batch id, a date range,
+    # whatever the job needs to identify "this slice of work."
+    scope: Mapped[str] = mapped_column(String, nullable=False)
+    last_completed_at: Mapped[datetime | None] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
+    # Last successfully completed date (for date-range backfills).
+    last_completed_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    # Job-specific state (next page token, next player_key, etc.).
+    state: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+
+    updated_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
     )

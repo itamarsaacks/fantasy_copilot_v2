@@ -46,6 +46,7 @@ from app.engine.projection import (
     _PointsValuator,
 )
 from app.security import get_current_user
+from app.services.clock import resolve_today
 from app.services.player_history import fetch_and_cache_logs
 from app.services.yahoo_auth import get_fresh_access_token
 
@@ -535,7 +536,7 @@ class PlayerDetailResponse(BaseModel):
 def _parse_range(
     start: str | None, end: str | None
 ) -> tuple[date_type, date_type, date_type]:
-    today = datetime.now(timezone.utc).date()
+    today = resolve_today()
     try:
         s = date_type.fromisoformat(start) if start else today - timedelta(days=_DEFAULT_DETAIL_DAYS_BACK)
         e = date_type.fromisoformat(end) if end else today
@@ -676,18 +677,37 @@ async def get_player_detail(
     sched_dates = [g.game_date for g in sched_rows]
 
     # ------------------------------------------------------------------
-    # ACTUAL portion — past games in range. Fetched + cached via the
-    # player_history service.
-    # ------------------------------------------------------------------
-    access_token = await get_fresh_access_token(db, user)
-    logs = await fetch_and_cache_logs(
-        db,
-        access_token=access_token,
-        player=player,
-        start=start_date,
-        end=end_date,
-        today=today,
-    )
+    # ACTUAL portion — past games in range. Per master plan §2.3 this is
+    # now a Postgres-only read. Background `sync_game_logs.py` keeps
+    # `nba_game_logs` populated. The on-demand Yahoo fallback below is
+    # transitional: it fires only in live mode when DB has nothing for
+    # the requested range. Once production has been backfilled (Step 3
+    # backfill CLI run) and nightly sync has caught up, remove the
+    # fallback entirely and tighten the CI guard in
+    # `scripts/check_forbidden_sources.sh` (the `yahoo_in_routes` block
+    # changes from warning to failure).
+    from app.services.game_logs import get_logs_for_player
+    from app.services.clock import is_replay_mode
+
+    logs = await get_logs_for_player(db, player.id, start_date, end_date)
+
+    if not logs and not is_replay_mode():
+        # Transitional fallback — see comment above.
+        import logging
+        logging.getLogger(__name__).warning(
+            "FALLBACK: hitting Yahoo at request time for player %s [%s, %s] "
+            "— run sync_game_logs backfill to eliminate this path",
+            player.id, start_date, end_date,
+        )
+        access_token = await get_fresh_access_token(db, user)
+        logs = await fetch_and_cache_logs(
+            db,
+            access_token=access_token,
+            player=player,
+            start=start_date,
+            end=end_date,
+            today=today,
+        )
 
     # Pick a valuator for fps math from the league settings.
     valuator = None

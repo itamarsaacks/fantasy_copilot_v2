@@ -23,6 +23,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.db.engine import SessionLocal
 from app.db.models import NbaSchedule
+from app.services.clock import resolve_today
 
 log = logging.getLogger(__name__)
 
@@ -187,7 +188,7 @@ async def sync_schedule(lookahead_days: int = LOOKAHEAD_DAYS) -> dict[str, int]:
     Returns counts for observability. Idempotent — runs anytime, only
     inserts new game_ids and refreshes scheduled/live games.
     """
-    today = datetime.now(timezone.utc).date()
+    today = resolve_today()
     days = [today + timedelta(days=i) for i in range(lookahead_days)]
 
     fetched = 0
