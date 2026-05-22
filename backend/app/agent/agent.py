@@ -77,14 +77,17 @@ ALL_TOOLS = [
 MODEL = "anthropic:claude-sonnet-4-6"
 
 
-@lru_cache(maxsize=8)
-def _agent_for_scoring_type(scoring_type: str):
+@lru_cache(maxsize=16)
+def _agent_for_scoring_type(scoring_type: str, cache_key_date: str):  # noqa: ARG001
     """Build (or reuse) a deep agent for a given league scoring type.
 
-    NOTE: this is called per request from the chat handler, after the
-    checkpointer has been started in app lifespan. We pass it via the
-    `checkpointer` kwarg so the agent automatically persists conversation
-    state per thread_id.
+    NOTE: `cache_key_date` is in the signature so the LRU cache busts when
+    the day rolls over (or replay AS_OF_DATE changes). The system prompt
+    bakes in `resolve_today()` so stale-day caches would otherwise make
+    the agent say "yesterday" = the wrong date.
+
+    Called per request from the chat handler, after the checkpointer has
+    been started in app lifespan.
     """
     return create_deep_agent(
         model=MODEL,
@@ -96,7 +99,9 @@ def _agent_for_scoring_type(scoring_type: str):
 
 def get_agent(scoring_type: str):
     """Public accessor — always go through here so the cache is shared."""
-    return _agent_for_scoring_type(scoring_type or "headpoint")
+    from app.services.clock import resolve_today
+
+    return _agent_for_scoring_type(scoring_type or "headpoint", resolve_today().isoformat())
 
 
 def reset_agent_cache() -> None:

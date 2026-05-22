@@ -165,11 +165,38 @@ SCORING_TYPE_NOTES = {
 
 
 def build_system_prompt(scoring_type: str) -> str:
-    """Compose the full system prompt for a league of the given scoring type."""
+    """Compose the full system prompt for a league of the given scoring type.
+
+    Includes today's date (resolve_today() — replay-aware) so the agent
+    doesn't hallucinate a year when the user says "yesterday" or "March 15"
+    without specifying the year. Critical for off-season / replay-mode work:
+    without this, the agent assumes its training-cutoff year and asks our
+    tools about a date that doesn't have data.
+    """
+    from app.services.clock import is_replay_mode, resolve_today
+
     note = SCORING_TYPE_NOTES.get(scoring_type)
     if not note:
         note = (
             f"League scoring type is '{scoring_type}' (unfamiliar). Treat as "
             "head-to-head points unless the user clarifies otherwise."
         )
-    return f"{BASE_RULES}\n\nLeague type:\n{note}\n"
+
+    today = resolve_today()
+    date_note = (
+        f"Today's date is {today.isoformat()} ({today.strftime('%A, %B %d, %Y')})."
+    )
+    if is_replay_mode():
+        date_note += (
+            " The app is in REPLAY mode — treat this date as the present. "
+            "When the user says 'today', 'yesterday', 'this week', they mean "
+            "relative to this date, NOT the real-world current date. Pass "
+            f"dates in YYYY-MM-DD format starting from {today.year}."
+        )
+    else:
+        date_note += (
+            " When users say 'yesterday' / 'this week' / etc., resolve relative "
+            f"to this date. Always pass dates as YYYY-MM-DD in {today.year}."
+        )
+
+    return f"{BASE_RULES}\n\n{date_note}\n\nLeague type:\n{note}\n"
