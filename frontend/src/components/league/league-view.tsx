@@ -8,11 +8,13 @@ import { api } from "@/lib/api";
 import { toISODate, formatDateHeadline } from "@/lib/date-utils";
 import type {
   LeagueResponse,
+  StandingOnDate,
   StandingsOnDateResponse,
   TeamStanding,
 } from "@/lib/api-types";
 import { cn } from "@/lib/utils";
 import { DateToggle } from "@/components/shared/date-toggle";
+import { OpponentRosterDialog } from "./opponent-roster-dialog";
 
 function formatNum(v: number | null | undefined, digits = 1): string {
   if (v === null || v === undefined) return "—";
@@ -63,6 +65,7 @@ function StandingsTable({
   fpsByTeam,
   fpsLoading,
   maxDate,
+  onTeamClick,
 }: {
   teams: TeamStanding[];
   date: Date;
@@ -70,6 +73,7 @@ function StandingsTable({
   fpsByTeam: Map<number, number | null>;
   fpsLoading: boolean;
   maxDate?: Date;
+  onTeamClick: (teamId: number) => void;
 }) {
   const anyRecord = teams.some(hasRecord);
   const anyPA = teams.some((t) => t.points_against !== null);
@@ -121,9 +125,11 @@ function StandingsTable({
             {teams.map((t) => (
               <tr
                 key={t.team_id}
+                onClick={() => onTeamClick(t.team_id)}
                 className={cn(
-                  "border-b border-foreground/5 last:border-b-0",
-                  t.is_user_team && "bg-orange-500/[0.05]",
+                  "cursor-pointer border-b border-foreground/5 last:border-b-0",
+                  "transition hover:bg-foreground/[0.04]",
+                  t.is_user_team && "bg-orange-500/[0.05] hover:bg-orange-500/[0.08]",
                 )}
               >
                 <td className="px-3 py-2.5 text-left font-semibold tabular-nums">
@@ -288,6 +294,7 @@ export function LeagueView() {
   const { leagueId, isLoading: leagueLoading } = useActiveLeague();
   const { today: appToday } = useAppToday();
   const [date, setDate] = useState<Date | null>(null);
+  const [openTeamId, setOpenTeamId] = useState<number | null>(null);
 
   // Seed the date from appToday once it resolves
   useEffect(() => {
@@ -331,8 +338,32 @@ export function LeagueView() {
   }
   const d = leagueQ.data;
   const fpsByTeam = new Map<number, number | null>();
+  const standingByTeam = new Map<number, StandingOnDate>();
   for (const row of standingsQ.data?.standings ?? []) {
     fpsByTeam.set(row.team_id, row.fps_on_date);
+    standingByTeam.set(row.team_id, row);
+  }
+
+  // Compose the StandingOnDate the dialog needs — prefer the live row if
+  // we have it for this date; otherwise synthesize from the static league
+  // row so the dialog still opens even before standings load.
+  let dialogTeam: StandingOnDate | null = null;
+  if (openTeamId !== null) {
+    const live = standingByTeam.get(openTeamId);
+    if (live) {
+      dialogTeam = live;
+    } else {
+      const t = d.teams.find((x) => x.team_id === openTeamId);
+      if (t) {
+        dialogTeam = {
+          team_id: t.team_id,
+          team_name: t.name,
+          manager_name: t.manager_name,
+          fps_on_date: null,
+          rank_on_date: t.rank ?? 0,
+        };
+      }
+    }
   }
 
   return (
@@ -345,11 +376,21 @@ export function LeagueView() {
         fpsByTeam={fpsByTeam}
         fpsLoading={standingsQ.isLoading || standingsQ.isFetching}
         maxDate={appToday ?? undefined}
+        onTeamClick={setOpenTeamId}
       />
       <div className="grid gap-4 md:grid-cols-2">
         <ScoringCard rules={d.scoring} scoringType={d.meta.scoring_type} />
         <SettingsCard settings={d.settings} />
       </div>
+
+      <OpponentRosterDialog
+        team={dialogTeam}
+        date={date}
+        open={openTeamId !== null}
+        onOpenChange={(o) => {
+          if (!o) setOpenTeamId(null);
+        }}
+      />
     </div>
   );
 }
