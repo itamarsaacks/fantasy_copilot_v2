@@ -30,8 +30,15 @@ from app.db.models import (
     Team,
     User,
 )
+from app.engine.projection import (
+    _CategoryValuator,
+    _PointsValuator,
+    CATEGORY_LEAGUE_TYPES,
+    POINTS_LEAGUE_TYPES,
+)
 from app.security import get_current_user
 from app.services.clock import resolve_today
+from app.services.game_logs import get_logs_for_players_on_date
 from app.services.projection_window import (
     project_fps_for_window,
     project_fps_on_date,
@@ -106,6 +113,10 @@ class RosterPlayerView(BaseModel):
     full_name: str
     nba_team_abbr: str | None
     headshot_path: str | None
+    # FPS computed via the league's scoring rules for `on_date`. `null`
+    # means the player did not play (DNP) or has no game-log row.
+    fps_on_date: float | None = None
+    did_not_play: bool = False
 
 
 class TeamRosterResponse(BaseModel):
@@ -155,6 +166,44 @@ async def team_roster_on_date(
         .all()
     )
     by_id = {p.id: p for p in players}
+
+    # Compute per-player FPS-on-date using this league's scoring rules.
+    settings = league.settings_json or {}
+    valuator = None
+    if league.scoring_type in POINTS_LEAGUE_TYPES:
+        valuator = _PointsValuator.from_settings(settings)
+    elif league.scoring_type in CATEGORY_LEAGUE_TYPES:
+        valuator = _CategoryValuator.from_settings(settings)
+
+    fps_by_player: dict[int, float | None] = {}
+    dnp_by_player: dict[int, bool] = {}
+    if valuator is not None:
+        logs = await get_logs_for_players_on_date(db, player_ids, target)
+        for pid in player_ids:
+            row = logs.get(pid)
+            if row is None:
+                fps_by_player[pid] = None
+                dnp_by_player[pid] = False
+                continue
+            if row.did_not_play:
+                fps_by_player[pid] = None
+                dnp_by_player[pid] = True
+                continue
+            box_floats = {
+                k: float(v)
+                for k, v in (row.box or {}).items()
+                if isinstance(v, (int, float))
+            }
+            if not box_floats:
+                fps_by_player[pid] = None
+                dnp_by_player[pid] = False
+                continue
+            fps_one, _ = valuator.season_total(box_floats)
+            fps_by_player[pid] = (
+                round(float(fps_one), 2) if fps_one is not None else None
+            )
+            dnp_by_player[pid] = False
+
     return TeamRosterResponse(
         team_id=team_id,
         team_name=team.name,
@@ -165,6 +214,8 @@ async def team_roster_on_date(
                 full_name=p.full_name,
                 nba_team_abbr=p.nba_team_abbr,
                 headshot_path=p.headshot_path,
+                fps_on_date=fps_by_player.get(p.id),
+                did_not_play=dnp_by_player.get(p.id, False),
             )
             for p in (by_id[s.player_id] for s in slots if s.player_id in by_id)
         ],

@@ -40,6 +40,8 @@ type RosterPlayerView = {
   full_name: string;
   nba_team_abbr: string | null;
   headshot_path: string | null;
+  fps_on_date: number | null;
+  did_not_play: boolean;
 };
 
 type TeamRosterResponse = {
@@ -154,33 +156,56 @@ export function OpponentRosterDialog({
                 current
               </p>
               <ul className="divide-y divide-foreground/5">
-                {rosterQ.data.players.map((p) => (
-                  <li key={p.player_id}>
-                    <button
-                      type="button"
-                      onClick={() => openPlayer(p.player_id, p.full_name)}
-                      className={cn(
-                        "flex w-full items-center gap-3 rounded-md px-2 py-2 text-left",
-                        "transition hover:bg-foreground/5 active:bg-foreground/10",
-                      )}
-                    >
-                      <PlayerAvatar
-                        name={p.full_name}
-                        headshotPath={p.headshot_path}
-                        size={32}
-                        className="shrink-0"
-                      />
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate text-sm font-medium">
-                          {p.full_name}
+                {[...rosterQ.data.players]
+                  .sort((a, b) => {
+                    // FPS desc, nulls last; ties broken alphabetically
+                    const av = a.fps_on_date ?? -Infinity;
+                    const bv = b.fps_on_date ?? -Infinity;
+                    if (av !== bv) return bv - av;
+                    return a.full_name.localeCompare(b.full_name);
+                  })
+                  .map((p) => (
+                    <li key={p.player_id}>
+                      <button
+                        type="button"
+                        onClick={() => openPlayer(p.player_id, p.full_name)}
+                        className={cn(
+                          "flex w-full items-center gap-3 rounded-md px-2 py-2 text-left",
+                          "transition hover:bg-foreground/5 active:bg-foreground/10",
+                        )}
+                      >
+                        <PlayerAvatar
+                          name={p.full_name}
+                          headshotPath={p.headshot_path}
+                          size={32}
+                          className="shrink-0"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-sm font-medium">
+                            {p.full_name}
+                          </div>
                         </div>
-                      </div>
-                      <div className="shrink-0">
-                        <TeamLogo abbr={p.nba_team_abbr} size={24} />
-                      </div>
-                    </button>
-                  </li>
-                ))}
+                        <div className="shrink-0">
+                          <TeamLogo abbr={p.nba_team_abbr} size={24} />
+                        </div>
+                        <div className="w-14 shrink-0 text-right">
+                          {p.fps_on_date !== null ? (
+                            <span className="text-sm font-semibold tabular-nums text-foreground">
+                              {formatFps(p.fps_on_date)}
+                            </span>
+                          ) : p.did_not_play ? (
+                            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                              DNP
+                            </span>
+                          ) : (
+                            <span className="text-sm text-muted-foreground/60">
+                              —
+                            </span>
+                          )}
+                        </div>
+                      </button>
+                    </li>
+                  ))}
               </ul>
             </>
           )}
