@@ -1,10 +1,18 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useActiveLeague } from "@/lib/hooks/use-active-league";
+import { useAppToday } from "@/lib/hooks/use-app-today";
 import { api } from "@/lib/api";
-import type { LeagueResponse, TeamStanding } from "@/lib/api-types";
+import { toISODate, formatDateHeadline } from "@/lib/date-utils";
+import type {
+  LeagueResponse,
+  StandingsOnDateResponse,
+  TeamStanding,
+} from "@/lib/api-types";
 import { cn } from "@/lib/utils";
+import { DateToggle } from "@/components/shared/date-toggle";
 
 function formatNum(v: number | null | undefined, digits = 1): string {
   if (v === null || v === undefined) return "—";
@@ -48,18 +56,36 @@ function MetaCard({ meta }: { meta: LeagueResponse["meta"] }) {
   );
 }
 
-function StandingsTable({ teams }: { teams: TeamStanding[] }) {
+function StandingsTable({
+  teams,
+  date,
+  onDateChange,
+  fpsByTeam,
+  fpsLoading,
+  maxDate,
+}: {
+  teams: TeamStanding[];
+  date: Date;
+  onDateChange: (next: Date) => void;
+  fpsByTeam: Map<number, number | null>;
+  fpsLoading: boolean;
+  maxDate?: Date;
+}) {
   const anyRecord = teams.some(hasRecord);
   const anyPA = teams.some((t) => t.points_against !== null);
+  const dateHeader = formatDateHeadline(date);
   return (
     <section className="overflow-hidden rounded-xl bg-card ring-1 ring-foreground/10">
-      <header className="flex items-baseline justify-between border-b border-foreground/10 px-4 py-2">
-        <h2 className="text-sm font-semibold uppercase tracking-wider">
-          Standings
-        </h2>
-        <span className="text-xs text-muted-foreground">
-          {teams.length} teams
-        </span>
+      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-foreground/10 px-4 py-2">
+        <div className="flex items-baseline gap-3">
+          <h2 className="text-sm font-semibold uppercase tracking-wider">
+            Standings
+          </h2>
+          <span className="text-xs text-muted-foreground">
+            {teams.length} teams
+          </span>
+        </div>
+        <DateToggle value={date} onChange={onDateChange} maxDate={maxDate} />
       </header>
 
       <div className="overflow-x-auto">
@@ -68,17 +94,25 @@ function StandingsTable({ teams }: { teams: TeamStanding[] }) {
             <tr>
               <th className="px-3 py-2 text-left">#</th>
               <th className="px-3 py-2 text-left">Team</th>
+              <th
+                className="px-3 py-2 text-right"
+                title={`Fantasy points on ${dateHeader}`}
+              >
+                FPS {dateHeader}
+              </th>
               {anyRecord && <th className="px-3 py-2 text-right">W-L-T</th>}
-              <th className="px-3 py-2 text-right">Points For</th>
+              <th className="hidden px-3 py-2 text-right md:table-cell">
+                Points For
+              </th>
               {anyPA && (
-                <th className="hidden px-3 py-2 text-right sm:table-cell">
+                <th className="hidden px-3 py-2 text-right md:table-cell">
                   Against
                 </th>
               )}
-              <th className="hidden px-3 py-2 text-right sm:table-cell">
+              <th className="hidden px-3 py-2 text-right lg:table-cell">
                 Moves
               </th>
-              <th className="hidden px-3 py-2 text-right md:table-cell">
+              <th className="hidden px-3 py-2 text-right lg:table-cell">
                 Trades
               </th>
             </tr>
@@ -122,24 +156,31 @@ function StandingsTable({ teams }: { teams: TeamStanding[] }) {
                     </div>
                   )}
                 </td>
+                <td className="px-3 py-2.5 text-right font-semibold tabular-nums">
+                  {fpsLoading && !fpsByTeam.has(t.team_id) ? (
+                    <span className="text-muted-foreground">…</span>
+                  ) : (
+                    formatNum(fpsByTeam.get(t.team_id) ?? null)
+                  )}
+                </td>
                 {anyRecord && (
                   <td className="px-3 py-2.5 text-right tabular-nums">
                     {t.wins ?? 0}-{t.losses ?? 0}
                     {t.ties ? `-${t.ties}` : ""}
                   </td>
                 )}
-                <td className="px-3 py-2.5 text-right font-semibold tabular-nums">
+                <td className="hidden px-3 py-2.5 text-right font-semibold tabular-nums md:table-cell">
                   {formatNum(t.points_for)}
                 </td>
                 {anyPA && (
-                  <td className="hidden px-3 py-2.5 text-right tabular-nums sm:table-cell">
+                  <td className="hidden px-3 py-2.5 text-right tabular-nums md:table-cell">
                     {formatNum(t.points_against)}
                   </td>
                 )}
-                <td className="hidden px-3 py-2.5 text-right tabular-nums text-muted-foreground sm:table-cell">
+                <td className="hidden px-3 py-2.5 text-right tabular-nums text-muted-foreground lg:table-cell">
                   {t.number_of_moves ?? "—"}
                 </td>
-                <td className="hidden px-3 py-2.5 text-right tabular-nums text-muted-foreground md:table-cell">
+                <td className="hidden px-3 py-2.5 text-right tabular-nums text-muted-foreground lg:table-cell">
                   {t.number_of_trades ?? "—"}
                 </td>
               </tr>
@@ -245,10 +286,30 @@ function SettingsCard({ settings }: { settings: LeagueResponse["settings"] }) {
 
 export function LeagueView() {
   const { leagueId, isLoading: leagueLoading } = useActiveLeague();
+  const { today: appToday } = useAppToday();
+  const [date, setDate] = useState<Date | null>(null);
+
+  // Seed the date from appToday once it resolves
+  useEffect(() => {
+    if (appToday && !date) setDate(appToday);
+  }, [appToday, date]);
+
   const leagueQ = useQuery<LeagueResponse>({
     queryKey: ["league", leagueId],
     queryFn: () => api<LeagueResponse>(`/api/league/${leagueId}`),
     enabled: !!leagueId,
+  });
+
+  const dateISO = date ? toISODate(date) : null;
+  const standingsQ = useQuery<StandingsOnDateResponse>({
+    queryKey: ["standings-on-date", leagueId, dateISO],
+    queryFn: () =>
+      api<StandingsOnDateResponse>(
+        `/api/standings?league_id=${leagueId}&date=${dateISO}`,
+      ),
+    enabled: !!leagueId && !!dateISO,
+    // Keep previous data while re-fetching for new date — prevents flicker
+    placeholderData: (prev) => prev,
   });
 
   if (leagueLoading || leagueQ.isLoading) {
@@ -263,13 +324,28 @@ export function LeagueView() {
       </div>
     );
   }
-  if (!leagueQ.data) return null;
+  if (!leagueQ.data || !date) {
+    return (
+      <div className="p-6 text-sm text-muted-foreground">Loading league…</div>
+    );
+  }
   const d = leagueQ.data;
+  const fpsByTeam = new Map<number, number | null>();
+  for (const row of standingsQ.data?.standings ?? []) {
+    fpsByTeam.set(row.team_id, row.fps_on_date);
+  }
 
   return (
     <div className="mx-auto max-w-7xl space-y-4 p-4 md:p-6">
       <MetaCard meta={d.meta} />
-      <StandingsTable teams={d.teams} />
+      <StandingsTable
+        teams={d.teams}
+        date={date}
+        onDateChange={setDate}
+        fpsByTeam={fpsByTeam}
+        fpsLoading={standingsQ.isLoading || standingsQ.isFetching}
+        maxDate={appToday ?? undefined}
+      />
       <div className="grid gap-4 md:grid-cols-2">
         <ScoringCard rules={d.scoring} scoringType={d.meta.scoring_type} />
         <SettingsCard settings={d.settings} />

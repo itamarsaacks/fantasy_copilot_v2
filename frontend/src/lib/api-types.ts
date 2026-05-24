@@ -333,6 +333,21 @@ export type LeagueResponse = {
   settings: LeagueSettings;
 };
 
+// /api/standings?league_id=N&date=YYYY-MM-DD
+export type StandingOnDate = {
+  team_id: number;
+  team_name: string;
+  manager_name: string | null;
+  fps_on_date: number | null;
+  rank_on_date: number;
+};
+
+export type StandingsOnDateResponse = {
+  league_id: number;
+  on_date: string;
+  standings: StandingOnDate[];
+};
+
 // /api/waivers/{league_id}?days_ahead=N
 export type WaiverCandidate = {
   player_id: number;
