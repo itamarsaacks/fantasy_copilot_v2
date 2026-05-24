@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 import { DateToggle } from "@/components/shared/date-toggle";
 import { PlayerAvatar } from "@/components/shared/player-avatar";
 import { useDrawer } from "@/components/shared/drawer-context";
+import { SimulatorPanel } from "./simulator-panel";
 
 // ---------------------------------------------------------------------------
 // Date helpers — relative-name only (Today/Yesterday/Tomorrow). The
@@ -597,6 +598,10 @@ export function TeamView() {
       {renderBucket("Starters", bucketed.starters)}
       {renderBucket("Bench", bucketed.bench)}
       {renderBucket("Injured Reserve", bucketed.ir)}
+
+      {leagueId !== null && (
+        <SimulatorPanel leagueId={leagueId} today={today} team={t} />
+      )}
     </div>
   );
 }
