@@ -383,6 +383,23 @@ export type WaiversResponse = {
   suggested_swaps: SuggestedSwap[];
 };
 
+// /api/waiver-planner/candidates?league_id=N&dates=YYYY-MM-DD,YYYY-MM-DD
+export type WaiverPlannerCandidate = {
+  player_id: number;
+  full_name: string;
+  nba_team_abbr: string | null;
+  position: string | null;
+  headshot_path: string | null;
+  games_on_selected_dates: number;
+  projected_fps_window: number;
+};
+
+export type WaiverPlannerResponse = {
+  league_id: number;
+  selected_dates: string[];
+  candidates: WaiverPlannerCandidate[];
+};
+
 // /api/team/{league_id}?date=YYYY-MM-DD
 export type GameOnDate = {
   date: string;
