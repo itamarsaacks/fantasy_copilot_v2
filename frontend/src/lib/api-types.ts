@@ -404,8 +404,10 @@ export type SeasonStats = {
 };
 
 export type TeamPlayerView = {
+  player_id: number;
   name: string;
   nba_team: string | null;
+  headshot_path: string | null;
   eligible_positions: string[];
   selected_position: string | null;
   status: string | null;

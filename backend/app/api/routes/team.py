@@ -166,8 +166,10 @@ class SeasonStats(BaseModel):
 
 
 class RosterPlayerView(BaseModel):
+    player_id: int
     name: str
     nba_team: str | None
+    headshot_path: str | None
     eligible_positions: list[str]
     selected_position: str | None
     status: str | None
@@ -456,8 +458,10 @@ async def get_team(
         actual_fps = actual_pair[1] if actual_pair else None
 
         view = RosterPlayerView(
+            player_id=p.id,
             name=p.full_name,
             nba_team=p.nba_team_abbr,
+            headshot_path=p.headshot_path,
             eligible_positions=p.eligible_positions or [],
             selected_position=rp.selected_position,
             status=p.status,

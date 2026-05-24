@@ -5,47 +5,23 @@ import { useQuery } from "@tanstack/react-query";
 import { useActiveLeague } from "@/lib/hooks/use-active-league";
 import { useAppToday } from "@/lib/hooks/use-app-today";
 import { api } from "@/lib/api";
+import { addDays, isSameDay, toISODate } from "@/lib/date-utils";
 import type { TeamPlayerView, TeamResponse } from "@/lib/api-types";
 import { cn } from "@/lib/utils";
+import { DateToggle } from "@/components/shared/date-toggle";
+import { PlayerAvatar } from "@/components/shared/player-avatar";
+import { useDrawer } from "@/components/shared/drawer-context";
 
 // ---------------------------------------------------------------------------
-// Date helpers
+// Date helpers — relative-name only (Today/Yesterday/Tomorrow). The
+// absolute date display goes through the shared DateToggle.
 // ---------------------------------------------------------------------------
 
-function toISODate(d: Date): string {
-  // YYYY-MM-DD in local time
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
-
-function parseISODate(s: string): Date {
-  const [y, m, d] = s.split("-").map(Number);
-  return new Date(y, m - 1, d);
-}
-
-function isSameDay(a: Date, b: Date): boolean {
-  return (
-    a.getFullYear() === b.getFullYear() &&
-    a.getMonth() === b.getMonth() &&
-    a.getDate() === b.getDate()
-  );
-}
-
-function formatDateHeadline(d: Date, today: Date): string {
+function relativeName(d: Date, today: Date): string | null {
   if (isSameDay(d, today)) return "Today";
-  const yest = new Date(today);
-  yest.setDate(today.getDate() - 1);
-  if (isSameDay(d, yest)) return "Yesterday";
-  const tom = new Date(today);
-  tom.setDate(today.getDate() + 1);
-  if (isSameDay(d, tom)) return "Tomorrow";
-  return d.toLocaleDateString(undefined, {
-    weekday: "long",
-    month: "short",
-    day: "numeric",
-  });
+  if (isSameDay(d, addDays(today, -1))) return "Yesterday";
+  if (isSameDay(d, addDays(today, 1))) return "Tomorrow";
+  return null;
 }
 
 function formatTipoff(iso: string | null): string {
@@ -125,7 +101,7 @@ function canFillSlot(player: TeamPlayerView, slot: string): boolean {
 // Sub-components
 // ---------------------------------------------------------------------------
 
-function DateStrip({
+function DateBar({
   date,
   onChange,
   today,
@@ -134,49 +110,23 @@ function DateStrip({
   onChange: (d: Date) => void;
   today: Date;
 }) {
-  function shift(days: number) {
-    const next = new Date(date);
-    next.setDate(date.getDate() + days);
-    onChange(next);
-  }
+  const relative = relativeName(date, today);
   const isToday = isSameDay(date, today);
-
   return (
-    <div className="flex flex-wrap items-center gap-2 rounded-xl bg-card px-3 py-2 ring-1 ring-foreground/10">
-      <button
-        type="button"
-        onClick={() => shift(-1)}
-        className="flex h-9 w-9 items-center justify-center rounded-md text-lg ring-1 ring-foreground/10 transition hover:bg-foreground/5"
-        aria-label="Previous day"
-      >
-        ‹
-      </button>
-      <div className="flex min-w-0 flex-1 flex-col items-center px-2 sm:flex-row sm:items-baseline sm:gap-3">
-        <span className="text-sm font-semibold tracking-tight">
-          {formatDateHeadline(date, today)}
+    <div className="flex flex-wrap items-center gap-2">
+      <DateToggle value={date} onChange={onChange} />
+      {relative && (
+        <span
+          className={cn(
+            "rounded-full border px-2 py-1 text-[11px] font-semibold uppercase tracking-wider",
+            isToday
+              ? "border-orange-500/40 bg-orange-500/10 text-orange-400"
+              : "border-foreground/15 bg-foreground/5 text-muted-foreground",
+          )}
+        >
+          {relative}
         </span>
-        <span className="text-xs text-muted-foreground">
-          {date.toLocaleDateString(undefined, {
-            year: "numeric",
-            month: "short",
-            day: "numeric",
-          })}
-        </span>
-      </div>
-      <button
-        type="button"
-        onClick={() => shift(1)}
-        className="flex h-9 w-9 items-center justify-center rounded-md text-lg ring-1 ring-foreground/10 transition hover:bg-foreground/5"
-        aria-label="Next day"
-      >
-        ›
-      </button>
-      <input
-        type="date"
-        value={toISODate(date)}
-        onChange={(e) => e.target.value && onChange(parseISODate(e.target.value))}
-        className="h-9 rounded-md border border-foreground/10 bg-background px-2 text-sm"
-      />
+      )}
       {!isToday && (
         <button
           type="button"
@@ -235,8 +185,10 @@ function PlayerRow({
   isSwapCandidate,
   isModified,
   swapDisabledReason,
+  swapModeActive,
   onClickSwap,
   onClickRow,
+  onOpenDrawer,
 }: {
   p: TeamPlayerView;
   effectiveSlot: string | null;
@@ -245,8 +197,10 @@ function PlayerRow({
   isSwapCandidate: boolean;
   isModified: boolean;
   swapDisabledReason: string | null;
+  swapModeActive: boolean;
   onClickSwap: () => void;
   onClickRow: () => void;
+  onOpenDrawer: () => void;
 }) {
   const tone = statusTone(p.status);
   // On past dates, prefer the actual-game stat line. If we have no actuals
@@ -257,17 +211,34 @@ function PlayerRow({
   const rightNumber = isPast ? p.actual_fps_on_date : p.projected_fps_on_date;
   const rightLabel = isPast ? "Actual" : "Proj";
   const showHighlight = isSwapSource || isSwapCandidate;
-  const clickable = isSwapSource || isSwapCandidate || swapDisabledReason === null;
+
+  // Click semantics:
+  //   - Swap mode active → use swap-target logic (existing onClickRow)
+  //   - Otherwise        → open the shared player drawer
+  // The slot pill always handles swap-init separately (stopPropagation).
+  const handleRowClick = () => {
+    if (swapModeActive) {
+      if (isSwapSource || isSwapCandidate) onClickRow();
+      return;
+    }
+    onOpenDrawer();
+  };
+  const cursorClass = swapModeActive
+    ? isSwapCandidate || isSwapSource
+      ? "cursor-pointer"
+      : "cursor-not-allowed"
+    : "cursor-pointer";
 
   return (
     <div
-      onClick={clickable ? onClickRow : undefined}
+      onClick={handleRowClick}
       className={cn(
         "grid grid-cols-[3rem_minmax(0,1fr)_auto] items-center gap-3 border-b border-foreground/5 px-3 py-3 last:border-b-0 transition",
         "hover:bg-foreground/[0.02]",
+        cursorClass,
         isSwapSource && "bg-orange-500/10 ring-1 ring-inset ring-orange-500/40",
         isSwapCandidate &&
-          "bg-emerald-500/[0.06] ring-1 ring-inset ring-emerald-500/30 cursor-pointer",
+          "bg-emerald-500/[0.06] ring-1 ring-inset ring-emerald-500/30",
         swapDisabledReason && "opacity-40",
         isModified && !showHighlight && "bg-blue-500/[0.04]",
       )}
@@ -293,7 +264,14 @@ function PlayerRow({
       </div>
 
       {/* Player meta + game */}
-      <div className="min-w-0">
+      <div className="flex min-w-0 items-start gap-3">
+        <PlayerAvatar
+          name={p.name}
+          headshotPath={p.headshot_path}
+          size={32}
+          className="mt-0.5 shrink-0"
+        />
+        <div className="min-w-0 flex-1">
         <div className="flex items-baseline gap-2">
           <span className="truncate font-semibold">{p.name}</span>
           {p.status && (
@@ -323,6 +301,7 @@ function PlayerRow({
             {p.injury_note}
           </p>
         )}
+        </div>
       </div>
 
       {/* Stat columns + per-date projection — desktop only */}
@@ -379,6 +358,7 @@ function MobileStatRow({ p, isPast }: { p: TeamPlayerView; isPast: boolean }) {
 
 export function TeamView() {
   const { leagueId, league, isLoading: leagueLoading } = useActiveLeague();
+  const { openPlayer } = useDrawer();
   // appToday is replay-aware. SSR / before-resolve falls back to wall-clock
   // so the component renders something; useEffect re-seeds `date` once
   // appToday actually arrives.
@@ -542,8 +522,10 @@ export function TeamView() {
                   isSwapCandidate={isCandidate}
                   isModified={overrides[p.name] !== undefined}
                   swapDisabledReason={blocked}
+                  swapModeActive={!!swapSource}
                   onClickSwap={() => onClickSlot(p.name)}
                   onClickRow={() => onClickRow(p)}
+                  onOpenDrawer={() => openPlayer(p.player_id, p.name)}
                 />
                 <MobileStatRow p={p} isPast={isPast} />
               </div>
@@ -570,7 +552,7 @@ export function TeamView() {
 
       <div className="flex flex-wrap items-center gap-3">
         {date ? (
-          <DateStrip date={date} onChange={setDate} today={today} />
+          <DateBar date={date} onChange={setDate} today={today} />
         ) : (
           <div className="h-13 w-64 animate-pulse rounded-xl bg-foreground/5" />
         )}
