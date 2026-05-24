@@ -559,7 +559,7 @@ export function TeamView() {
         )}
         {isPast && (
           <span className="rounded-full border border-foreground/15 bg-foreground/5 px-2 py-1 text-[11px] font-medium text-muted-foreground">
-            Past date — showing actual stats
+            Historical roster · actual stats · lineup slots not reconstructed
           </span>
         )}
       </div>
@@ -595,11 +595,17 @@ export function TeamView() {
         </div>
       )}
 
-      {renderBucket("Starters", bucketed.starters)}
-      {renderBucket("Bench", bucketed.bench)}
-      {renderBucket("Injured Reserve", bucketed.ir)}
+      {isPast ? (
+        renderBucket("Roster", bucketed.starters)
+      ) : (
+        <>
+          {renderBucket("Starters", bucketed.starters)}
+          {renderBucket("Bench", bucketed.bench)}
+          {renderBucket("Injured Reserve", bucketed.ir)}
+        </>
+      )}
 
-      {leagueId !== null && (
+      {leagueId !== null && !isPast && (
         <SimulatorPanel leagueId={leagueId} today={today} team={t} />
       )}
     </div>

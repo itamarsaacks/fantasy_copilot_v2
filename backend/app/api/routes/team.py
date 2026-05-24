@@ -246,13 +246,39 @@ async def get_team(
     if my_team is None:
         raise HTTPException(status_code=404, detail="user's team not found in league")
 
-    roster_rows = (
-        await db.execute(
-            select(RosterPlayer, Player)
-            .join(Player, Player.id == RosterPlayer.player_id)
-            .where(RosterPlayer.team_id == my_team.id)
+    # Compute is_past early — drives whether we reconstruct the historical
+    # roster (via roster_at) or use the live RosterPlayer snapshot.
+    today_for_roster = resolve_today()
+    is_past_for_roster = target_date < today_for_roster
+
+    # `roster_rows` is a list of (RosterPlayer | None, Player). The
+    # RosterPlayer side is only populated for today/future, since that
+    # table holds the live snapshot. On past dates we reconstruct the
+    # roster via the event log (master plan §2.5) and leave rp=None
+    # downstream — selected_position is not historically reconstructable.
+    if is_past_for_roster:
+        from app.services.roster_history import roster_at as _roster_at
+
+        slots = await _roster_at(db, my_team.id, target_date)
+        historical_player_ids = [s.player_id for s in slots]
+        players = (
+            (
+                await db.execute(
+                    select(Player).where(Player.id.in_(historical_player_ids))
+                )
+            )
+            .scalars()
+            .all()
         )
-    ).all()
+        roster_rows = [(None, p) for p in players]
+    else:
+        roster_rows = (
+            await db.execute(
+                select(RosterPlayer, Player)
+                .join(Player, Player.id == RosterPlayer.player_id)
+                .where(RosterPlayer.team_id == my_team.id)
+            )
+        ).all()
 
     player_ids = [p.id for _, p in roster_rows]
 
@@ -457,13 +483,17 @@ async def get_team(
         actual_stats_view = actual_pair[0] if actual_pair else None
         actual_fps = actual_pair[1] if actual_pair else None
 
+        # On past dates `rp` is None — we have no historical slot info, so
+        # the player goes into a single "starters" bucket (frontend renders
+        # this as a flat "Roster on {date}" list).
+        slot = rp.selected_position if rp is not None else None
         view = RosterPlayerView(
             player_id=p.id,
             name=p.full_name,
             nba_team=p.nba_team_abbr,
             headshot_path=p.headshot_path,
             eligible_positions=p.eligible_positions or [],
-            selected_position=rp.selected_position,
+            selected_position=slot,
             status=p.status,
             status_full=p.status_full,
             injury_note=p.injury_note,
@@ -475,7 +505,7 @@ async def get_team(
             season_stats=season,
         )
 
-        bucket_key = SLOT_BUCKET.get((rp.selected_position or "").upper(), "starters")
+        bucket_key = SLOT_BUCKET.get((slot or "").upper(), "starters")
         buckets[bucket_key].append(view)
 
     for key in buckets:
