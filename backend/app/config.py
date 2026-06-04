@@ -68,6 +68,24 @@ class Settings(BaseSettings):
     # email from Yahoo; revisit when we add an email field for public launch.
     admin_user_ids: str = ""
 
+    # --- Feature flags
+    # Each flag gates routes / agent tools / UI surfaces that are in-flight
+    # or platform-specific. Default to false so partial work can land on
+    # main behind a flag, and we flip the flag when the feature is ready.
+    # Set via env (e.g. FEATURE_ESPN_CONNECTOR=true in backend/.env).
+    feature_espn_connector: bool = False
+    feature_sleeper_connector: bool = False
+    feature_category_league_ux: bool = False
+    feature_billing: bool = False
+
+    # --- Observability
+    # Sentry DSN — leave empty to disable error reporting (tests + CI).
+    # In production this points at our Sentry project; we never report
+    # from local dev unless explicitly set.
+    sentry_dsn: str = ""
+    sentry_environment: str = "development"
+    sentry_traces_sample_rate: float = 0.1  # 10% of transactions
+
     @property
     def admin_user_id_set(self) -> set[int]:
         out: set[int] = set()
