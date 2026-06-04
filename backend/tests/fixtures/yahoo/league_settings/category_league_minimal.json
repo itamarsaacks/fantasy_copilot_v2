@@ -1,0 +1,19 @@
+{
+  "_comment": "Minimal-shape Yahoo league settings response — 9-cat H2H league. Anonymized. Stat IDs match Yahoo NBA conventions (12=PTS, 15=REB, 16=AST, 17=ST, 18=BLK, 19=TO, 10=3PTM, 5=FG%, 8=FT%). Display-only stats (e.g. minutes, stat_id 9) are included to verify the extractor filters them out.",
+  "scoring_type": "head",
+  "stat_modifiers": null,
+  "stat_categories": {
+    "stats": [
+      { "stat": { "stat_id": 12, "name": "PTS" } },
+      { "stat": { "stat_id": 15, "name": "REB" } },
+      { "stat": { "stat_id": 16, "name": "AST" } },
+      { "stat": { "stat_id": 17, "name": "ST" } },
+      { "stat": { "stat_id": 18, "name": "BLK" } },
+      { "stat": { "stat_id": 19, "name": "TO" } },
+      { "stat": { "stat_id": 10, "name": "3PTM" } },
+      { "stat": { "stat_id": 5, "name": "FG%" } },
+      { "stat": { "stat_id": 8, "name": "FT%" } },
+      { "stat": { "stat_id": 9, "name": "MIN", "is_only_display_stat": "1" } }
+    ]
+  }
+}

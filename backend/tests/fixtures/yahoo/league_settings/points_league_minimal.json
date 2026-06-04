@@ -1,0 +1,21 @@
+{
+  "_comment": "Minimal-shape Yahoo league settings response — points league. Anonymized: synthetic league_key, no manager identities. Real Yahoo responses are deeply nested mixed list/dict; this captures the subset our extractors actually read. Author: hand-crafted from extractor code in app/engine/projection.py — replace with a real captured response when scripts/capture_fixture.py lands.",
+  "scoring_type": "point",
+  "stat_modifiers": {
+    "stats": [
+      { "stat": { "stat_id": 12, "value": "1" } },
+      { "stat": { "stat_id": 15, "value": "1.2" } },
+      { "stat": { "stat_id": 16, "value": "1.5" } },
+      { "stat": { "stat_id": 17, "value": "3" } },
+      { "stat": { "stat_id": 18, "value": "3" } },
+      { "stat": { "stat_id": 19, "value": "-1" } }
+    ]
+  },
+  "stat_categories": {
+    "stats": [
+      { "stat": { "stat_id": 12, "name": "PTS" } },
+      { "stat": { "stat_id": 15, "name": "REB" } },
+      { "stat": { "stat_id": 16, "name": "AST" } }
+    ]
+  }
+}
