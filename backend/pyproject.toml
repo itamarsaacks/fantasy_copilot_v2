@@ -71,6 +71,11 @@ ignore = ["E402", "E741", "F841"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+# Add the backend root to sys.path so tests can do
+#   `from tests.fixtures import load_fixture`
+# Without this, CI's fresh interpreter doesn't see `tests` as a top-
+# level package even though pytest discovers tests inside it.
+pythonpath = ["."]
 # All async fixtures share the session-scoped event loop. Without this,
 # session-scoped async fixtures (like our `_test_engine`) get created on
 # one loop and function-scoped tests run on different per-test loops,
