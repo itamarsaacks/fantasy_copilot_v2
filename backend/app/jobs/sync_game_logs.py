@@ -21,7 +21,6 @@ import argparse
 import asyncio
 import logging
 from datetime import date as date_type, timedelta
-from typing import Iterable
 
 from sqlalchemy import distinct, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -118,7 +117,7 @@ async def _pick_syncing_user_with_fallback(
     it for the whole batch. If Yahoo invalidates mid-run a per-call
     fetch will fail (not our problem here), but the inner helpers retry.
     """
-    from app.services.yahoo_auth import YahooAuthBroken, get_fresh_access_token
+    from app.services.yahoo_auth import YahooAuthBroken
 
     candidates = (
         await db.execute(

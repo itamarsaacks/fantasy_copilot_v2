@@ -17,7 +17,7 @@ horizon), Yahoo ownership signals, and the player's league-context
 
 from __future__ import annotations
 
-from datetime import date as date_type, datetime, timedelta, timezone
+from datetime import date as date_type, datetime, timedelta
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -33,6 +33,7 @@ from app.db.models import (
     NbaSchedule,
     NewsItem,
     Player,
+    PlayerOwnershipEvent,
     PlayerStats,
     ProjectionCache,
     RosterPlayer,

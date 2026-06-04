@@ -231,7 +231,7 @@ function SignInPrompt() {
           <span className="italic text-primary">talk to your team.</span>
         </h1>
         <p className="text-muted-foreground text-[15px] leading-7 max-w-xl">
-          I'll pull your roster, league rules, free agents, and projections.
+          I&apos;ll pull your roster, league rules, free agents, and projections.
           Read-only access — I never post on your behalf.
         </p>
       </div>
@@ -275,7 +275,7 @@ function EmptyState({
         </h1>
         <p className="text-muted-foreground text-[15px] leading-7 max-w-xl">
           I have your roster, league rules, free agents, and projections.
-          I'll never make up a stat — every number comes from a real lookup.
+          I&apos;ll never make up a stat — every number comes from a real lookup.
         </p>
       </div>
 

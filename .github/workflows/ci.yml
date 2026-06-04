@@ -1,0 +1,95 @@
+# CI — gates every push and PR before merge.
+#
+# Three independent jobs run in parallel:
+#
+#   backend  — ruff lint + pytest (pure-unit subset, no Postgres needed)
+#   frontend — tsc --noEmit + eslint
+#   guards   — forbidden-sources allow-list + date.today() chokepoint guard
+#
+# Backend unit tests in this CI run do NOT require Postgres. Tests that
+# depend on the `db_session` fixture (DB-integration tests) are gated
+# behind a future job that boots a docker Postgres service — added when
+# the first such test lands. See backend/tests/conftest.py.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Cancel in-progress runs on the same ref when a new push lands.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: backend — ruff + pytest
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/pyproject.toml
+
+      - name: Install deps (project + dev extras)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Ruff lint
+        run: ruff check app tests
+
+      - name: Pytest (pure-unit subset)
+        # `-m "not db"` skips any test that depends on the db_session
+        # fixture once we mark them. For now all tests are pure-unit.
+        run: pytest -q
+
+  frontend:
+    name: frontend — typecheck + eslint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install deps
+        # --no-audit --no-fund keeps the install log clean in CI
+        run: npm ci --no-audit --no-fund
+
+      - name: TypeScript — tsc --noEmit
+        run: npm run typecheck
+
+      - name: ESLint
+        run: npm run lint
+
+  guards:
+    name: source guards — forbidden hosts + date.today()
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - name: Forbidden sources allow-list
+        # Fails if any backend code references stats.nba.com,
+        # basketball-reference.com, or other blocked hosts at runtime.
+        # See master plan §2.A.
+        run: bash scripts/check_forbidden_sources.sh

@@ -32,7 +32,6 @@ from app.db.engine import SessionLocal
 from app.db.models import (
     FreeAgent,
     League,
-    NbaGameLog,
     NbaSchedule,
     Player,
     Team,
@@ -46,7 +45,6 @@ from app.engine.projection import (
 from app.services.clock import resolve_today
 from app.services.game_logs import (
     get_logs_for_player,
-    get_logs_for_players_on_date,
 )
 from app.services.projection_window import (
     project_fps_for_window,

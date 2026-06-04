@@ -16,7 +16,7 @@ from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import and_, or_, select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.engine import get_session
@@ -25,7 +25,6 @@ from app.db.models import (
     League,
     NbaSchedule,
     Player,
-    ProjectionCache,
     RosterPlayer,
     Team,
     User,
@@ -41,7 +40,6 @@ from app.services.clock import resolve_today
 from app.services.game_logs import get_logs_for_players_on_date
 from app.services.projection_window import (
     project_fps_for_window,
-    project_fps_on_date,
 )
 from app.services.roster_history import roster_at
 from app.services.standings import standings_at

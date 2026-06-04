@@ -13,11 +13,10 @@ Box scores come from `nba_game_logs` (synced by sync_game_logs.py).
 from __future__ import annotations
 
 from datetime import date as date_type
-from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import and_, or_, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.engine import get_session

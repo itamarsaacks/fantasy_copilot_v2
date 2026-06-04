@@ -13,7 +13,7 @@ minutes trend, write back to Yahoo for real lineup edits.
 
 from __future__ import annotations
 
-from datetime import date as date_type, datetime, timedelta, timezone
+from datetime import date as date_type, timedelta
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query

@@ -57,6 +57,18 @@ dev = [
 line-length = 100
 target-version = "py312"
 
+[tool.ruff.lint]
+# Default rule set, with explicit ignores for patterns we deliberately use:
+#   E402 — module-level import not at top of file. Legit when we MUST
+#          set env vars (LANGSMITH_PROJECT, JWT_SECRET, etc.) before
+#          importing app.* modules whose load-time `get_settings()` reads
+#          them. Used in scripts/run_evals.py and tests/conftest.py.
+#   E741 — ambiguous single-letter name (`l`). A few in legacy code;
+#          not worth blocking CI for.
+#   F841 — local variable assigned but never used. A small backlog
+#          (currently 2 in routes/players.py); cleanup is its own task.
+ignore = ["E402", "E741", "F841"]
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]

@@ -20,7 +20,7 @@ Scope is intentionally small for v1. Defer to BACKLOG.md → Waivers tab:
 
 from __future__ import annotations
 
-from datetime import date as date_type, datetime, timedelta, timezone
+from datetime import date as date_type, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel

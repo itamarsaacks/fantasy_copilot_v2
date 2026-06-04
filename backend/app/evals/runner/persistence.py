@@ -15,7 +15,7 @@ from typing import Iterable
 
 from app.db.engine import SessionLocal
 from app.db.models import EvalCaseResult, EvalRun
-from app.evals.runner.result import CaseResult, PhrasingRun, RunSummary
+from app.evals.runner.result import PhrasingRun, RunSummary
 from app.evals.schema import EvalCase
 
 

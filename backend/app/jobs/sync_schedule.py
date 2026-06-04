@@ -18,7 +18,6 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
 import httpx
-from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.db.engine import SessionLocal

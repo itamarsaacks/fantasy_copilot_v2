@@ -16,11 +16,9 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from datetime import date
 
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.connectors import yahoo
 from app.db.engine import SessionLocal

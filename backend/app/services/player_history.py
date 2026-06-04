@@ -14,15 +14,15 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import date as date_type, datetime, timedelta, timezone
+from datetime import date as date_type, timedelta
 from typing import Any
 
-from sqlalchemy import and_, or_, select
+from sqlalchemy import or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.connectors import yahoo as yahoo_client
-from app.db.models import NbaGameLog, NbaSchedule, Player, User
+from app.db.models import NbaGameLog, NbaSchedule, Player
 from app.services.clock import resolve_today
 
 log = logging.getLogger(__name__)

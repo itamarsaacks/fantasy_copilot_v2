@@ -197,7 +197,7 @@ async def amain() -> int:
             print(f"  - {c.id} runs={c.total_run_count()}")
         return 0
 
-    print(f"Discovering test user/league from live DB...")
+    print("Discovering test user/league from live DB...")
     user_id, league_id, scoring_type = await discover_test_user_league()
     print(f"  user_id={user_id} league_id={league_id} scoring_type={scoring_type}")
 

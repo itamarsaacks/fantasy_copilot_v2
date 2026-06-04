@@ -10,12 +10,12 @@ full roster or a top-N FA list without burning 13 round trips.
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, timedelta
 from typing import Any
 
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
-from sqlalchemy import or_, select
+from sqlalchemy import select
 
 from app.agent.tools._helpers import fold_ascii, get_context
 from app.db.engine import SessionLocal
