@@ -71,4 +71,13 @@ ignore = ["E402", "E741", "F841"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+# All async fixtures share the session-scoped event loop. Without this,
+# session-scoped async fixtures (like our `_test_engine`) get created on
+# one loop and function-scoped tests run on different per-test loops,
+# producing "Event loop is closed" on connection teardown.
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
 testpaths = ["tests"]
+markers = [
+    "db: requires a running Postgres test database. Run with `pytest -m db` after `docker compose up -d` and `createdb fantasy_copilot_test`. The pure-unit pass (the default in CI) excludes these via `-m 'not db'`.",
+]

@@ -51,9 +51,10 @@ jobs:
         run: ruff check app tests
 
       - name: Pytest (pure-unit subset)
-        # `-m "not db"` skips any test that depends on the db_session
-        # fixture once we mark them. For now all tests are pure-unit.
-        run: pytest -q
+        # `-m "not db"` skips integration tests that need Postgres. They
+        # run locally (`pytest -m db` after `docker compose up -d`) and
+        # will get their own CI job with a postgres service container.
+        run: pytest -q -m "not db"
 
   frontend:
     name: frontend — typecheck + eslint
