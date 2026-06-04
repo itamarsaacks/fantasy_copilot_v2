@@ -49,8 +49,18 @@ from app.db.models import (
 
 log = logging.getLogger(__name__)
 
-POINTS_LEAGUE_TYPES = {"point", "headpoint"}
-CATEGORY_LEAGUE_TYPES = {"head", "roto"}
+# Yahoo Fantasy Basketball league scoring types — all 5 supported formats:
+#   point        — Season Points (all-season FPS total)
+#   headpoint    — Head-to-Head Points (weekly FPS matchup)
+#   seasonpoint  — Private "Season Points" variant — same math as `point`
+#   head         — Head-to-Head Categories (9-cat)
+#   roto         — Rotisserie (9-cat, rank-summed)
+#   headone      — Head-to-Head One Win (9-cat, one W per matchup) — same
+#                  per-player valuation as `head`; differs only in standings
+#                  math (one win/loss instead of per-cat W/L). Projection
+#                  engine doesn't care about that — treat as category.
+POINTS_LEAGUE_TYPES = {"point", "headpoint", "seasonpoint"}
+CATEGORY_LEAGUE_TYPES = {"head", "roto", "headone"}
 
 HORIZON_SEASON_TOTAL = "season_total"
 HORIZON_PER_GAME = "per_game"
@@ -86,8 +96,23 @@ async def compute_league_projections(league_id: int) -> ProjectionResult:
         elif league.scoring_type in CATEGORY_LEAGUE_TYPES:
             valuator = _CategoryValuator.from_settings(league.settings_json)
         else:
-            result.errors.append(f"unknown scoring_type '{league.scoring_type}'")
-            return result
+            # Unknown / future Yahoo type — graceful fallback: pick the
+            # valuator that fits what Yahoo actually sent (stat_categories
+            # ⇒ category league; stat_modifiers ⇒ points league). Logged
+            # loudly so we add it to the allow-list above next session.
+            log.warning(
+                "unknown scoring_type '%s' for league %s — auto-detecting",
+                league.scoring_type, league.league_key,
+            )
+            cat_valuator = _CategoryValuator.from_settings(league.settings_json)
+            pts_valuator = _PointsValuator.from_settings(league.settings_json)
+            valuator = cat_valuator or pts_valuator
+            if valuator is None:
+                result.errors.append(
+                    f"unknown scoring_type '{league.scoring_type}' and no "
+                    "stat_categories or stat_modifiers in settings"
+                )
+                return result
 
         if valuator is None:
             result.errors.append("could not parse league settings for projection")

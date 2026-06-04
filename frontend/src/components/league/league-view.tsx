@@ -28,10 +28,14 @@ function scoringTypeLabel(t: string): string {
   switch (t) {
     case "point":
       return "Points";
+    case "seasonpoint":
+      return "Season Points";
     case "headpoint":
       return "H2H Points";
     case "head":
       return "H2H Categories";
+    case "headone":
+      return "H2H One Win";
     case "roto":
       return "Rotisserie";
     default:
@@ -39,11 +43,51 @@ function scoringTypeLabel(t: string): string {
   }
 }
 
+function isCategoryLeague(t: string): boolean {
+  return t === "head" || t === "roto" || t === "headone";
+}
+
 function hasRecord(t: TeamStanding): boolean {
   return t.wins !== null || t.losses !== null;
 }
 
-function MetaCard({ meta }: { meta: LeagueResponse["meta"] }) {
+function MetaCard({
+  meta,
+  settings,
+  today,
+}: {
+  meta: LeagueResponse["meta"];
+  settings: LeagueResponse["settings"];
+  today: Date;
+}) {
+  // Format-aware status pills:
+  //  - Trade deadline: closed if today > trade_end_date; "closing soon" within 7d
+  //  - FAAB vs waiver-priority shorthand
+  //  - Category vs Points style hint (already in scoring label)
+  const tradeEnd = settings.trade_end_date
+    ? new Date(`${settings.trade_end_date}T23:59:59`)
+    : null;
+  let tradePill: { label: string; tone: "warn" | "danger" | "ok" } | null = null;
+  if (tradeEnd) {
+    const msPerDay = 86_400_000;
+    const days = Math.floor((tradeEnd.getTime() - today.getTime()) / msPerDay);
+    if (days < 0) {
+      tradePill = { label: "Trades closed", tone: "danger" };
+    } else if (days <= 7) {
+      tradePill = {
+        label: `Trade deadline in ${days}d`,
+        tone: "warn",
+      };
+    } else {
+      tradePill = {
+        label: `Trade deadline ${settings.trade_end_date}`,
+        tone: "ok",
+      };
+    }
+  }
+
+  const waiverPill = settings.uses_faab ? "FAAB waivers" : "Priority waivers";
+
   return (
     <header className="grid gap-3 rounded-xl bg-card p-4 ring-1 ring-foreground/10 md:grid-cols-[1fr_auto]">
       <div>
@@ -53,6 +97,31 @@ function MetaCard({ meta }: { meta: LeagueResponse["meta"] }) {
           {meta.num_teams} teams
           {meta.current_week !== null && ` · week ${meta.current_week}`}
         </p>
+        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          <span className="rounded-full bg-foreground/[0.06] px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+            {waiverPill}
+          </span>
+          {tradePill && (
+            <span
+              className={cn(
+                "rounded-full px-2 py-0.5 text-[11px] font-semibold",
+                tradePill.tone === "danger" &&
+                  "bg-red-500/15 text-red-300 ring-1 ring-red-500/30",
+                tradePill.tone === "warn" &&
+                  "bg-amber-500/15 text-amber-300 ring-1 ring-amber-500/30",
+                tradePill.tone === "ok" &&
+                  "bg-foreground/[0.06] text-muted-foreground",
+              )}
+            >
+              {tradePill.label}
+            </span>
+          )}
+          {settings.max_games_played !== null && (
+            <span className="rounded-full bg-foreground/[0.06] px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+              Max {settings.max_games_played} games / player
+            </span>
+          )}
+        </div>
       </div>
     </header>
   );
@@ -200,7 +269,7 @@ function StandingsTable({
 
 function ScoringCard({ rules, scoringType }: { rules: LeagueResponse["scoring"]; scoringType: string }) {
   if (rules.length === 0) return null;
-  const isPoints = scoringType === "point" || scoringType === "headpoint";
+  const isPoints = !isCategoryLeague(scoringType);
   return (
     <section className="rounded-xl bg-card ring-1 ring-foreground/10">
       <header className="border-b border-foreground/10 px-4 py-2">
@@ -368,7 +437,7 @@ export function LeagueView() {
 
   return (
     <div className="mx-auto max-w-7xl space-y-4 p-4 md:p-6">
-      <MetaCard meta={d.meta} />
+      <MetaCard meta={d.meta} settings={d.settings} today={appToday ?? new Date()} />
       <StandingsTable
         teams={d.teams}
         date={date}

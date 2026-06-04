@@ -161,6 +161,31 @@ SCORING_TYPE_NOTES = {
         "the `components` field holds per-category values — read THOSE for "
         "category-level analysis. projected_value is a composite for ranking only."
     ),
+    "headone": (
+        "This league is HEAD-TO-HEAD ONE WIN (9-category). Each week two teams "
+        "compete in 9 stat categories — the team that wins MORE categories gets "
+        "ONE win in the standings (unlike standard H2H Categories where each "
+        "category is its own W/L). Standings are simple W/L records.\n\n"
+        "STRATEGY RULES:\n"
+        "  - Player evaluation is the same as H2H Categories — read the "
+        "`components` field of get_player_projection for per-category values.\n"
+        "  - But matchup strategy differs: you only need to win the MAJORITY of "
+        "categories, not each one. Punting 1–2 cats to dominate the rest is a "
+        "valid one-win strategy (it isn't in roto, where every cat matters).\n"
+        "  - Frame weekly advice around 'which 5+ cats are we winning' rather "
+        "than 'are we covered everywhere'."
+    ),
+    "seasonpoint": (
+        "This league is SEASON POINTS (private-league variant of points). "
+        "Standings = total fantasy points across the whole season — no "
+        "head-to-head, no categories.\n\n"
+        "STRATEGY RULES (same as 'point'):\n"
+        "  - Only metric that matters is total fps.\n"
+        "  - Compare players by projected_value (fps). Higher = better.\n"
+        "  - Per-stat percentiles are descriptive, not strategic.\n"
+        "  - Schedule density (games per week) matters because more games = "
+        "more fps; weight high-game-count weeks accordingly."
+    ),
 }
 
 
