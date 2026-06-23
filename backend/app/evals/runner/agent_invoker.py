@@ -95,8 +95,14 @@ async def invoke(
     case_id: str,
     phrasing_index: int,
     repeat_index: int,
+    conversation_prefix: list[dict[str, str]] | None = None,
 ) -> PhrasingRun:
     """Run the agent once. Returns a PhrasingRun with raw observations.
+
+    `conversation_prefix` is a list of {"role": "user"|"assistant", "content": str}
+    turns that get prepended before `user_message` — required for any
+    multi-turn case (pronoun resolution, "and second?", etc.). The runner
+    builds it from case.conversation_prefix.
 
     Assertion evaluation happens AFTER this returns — in run.py.
     Errors during invocation are caught and reported via errored=True.
@@ -129,11 +135,18 @@ async def invoke(
         langsmith_thread_id=thread_id,  # we use the same id for both
     )
 
+    # Compose the full message history: prior turns from the case's
+    # conversation_prefix (if any) + the current user phrasing.
+    messages: list[dict[str, str]] = []
+    if conversation_prefix:
+        messages.extend(conversation_prefix)
+    messages.append({"role": "user", "content": user_message})
+
     started = time.perf_counter()
     try:
         agent = get_agent(scoring_type)
         state = await agent.ainvoke(
-            {"messages": [{"role": "user", "content": user_message}]},
+            {"messages": messages},
             config=config,
         )
         tool_calls, final_text = _extract_trace(state)

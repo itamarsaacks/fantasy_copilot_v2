@@ -96,6 +96,12 @@ async def run_case(
     total = len(messages) * case.repeat
     print(f"  [{case.id}] runs={total}")
 
+    # Convert PriorTurn pydantic models to plain dicts that LangGraph accepts.
+    prefix_dicts = [
+        {"role": t.role, "content": t.content}
+        for t in (case.conversation_prefix or [])
+    ]
+
     for phrasing_idx, phrasing in enumerate(messages):
         for repeat_idx in range(case.repeat):
             pr: PhrasingRun = await invoke(
@@ -106,6 +112,7 @@ async def run_case(
                 case_id=case.id,
                 phrasing_index=phrasing_idx,
                 repeat_index=repeat_idx,
+                conversation_prefix=prefix_dicts,
             )
             if not pr.errored:
                 failures = check_all(
