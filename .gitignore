@@ -59,3 +59,12 @@ build/
 
 # Claude Code internal worktrees — never commit
 .claude/worktrees/
+
+# Per-user Claude Code settings (permission allowlist, hooks). CLAUDE.md
+# and skills/ stay tracked — they document the workflow. settings.json is
+# per-user tooling config.
+.claude/settings.json
+.claude/settings.local.json
+
+# Rolling session log used mid-development. Git log is the durable record.
+SESSION_NOTES.md
