@@ -13,6 +13,13 @@ trade in your league's history.
 ![Next.js 15](https://img.shields.io/badge/next.js-15-black)
 ![Postgres 16](https://img.shields.io/badge/postgres-16-336791)
 
+<br/>
+
+![Chat evaluating a real trade — LaMelo Ball vs Nikola Jokić projections, verdict, per-cat breakdown](docs/screenshots/chat-trade.png)
+
+*The chat agent evaluating a real trade against real projection data —
+side-by-side stat comparison, +24 FPS delta, verdict.*
+
 </div>
 
 ---
@@ -33,6 +40,57 @@ trade in your league's history.
 - **Replay mode** — the entire app can be pinned to a synthetic "today"
   (e.g. `AS_OF_DATE=2026-03-15`) so it works and tests off-season, when
   Yahoo has no live data.
+
+---
+
+## Screenshots
+
+Every screenshot below is real, unstyled, pulled from the app in replay
+mode (pinned to March 15, 2026). Nothing is mocked.
+
+### Chat — real tools, real data, real reasoning
+
+The agent never estimates. Every stat comes from a tool call against the
+league's own data.
+
+| Roster query with rich formatting | Historical box-score lookup |
+|---|---|
+| ![roster with player mention chips + injury flags](docs/screenshots/chat-roster.png) | ![Joel Embiid chip + historical answer](docs/screenshots/chat-history.png) |
+
+### My Team — historical roster reconstruction
+
+Toggling to a past date replays draft + transactions to reconstruct the
+roster you actually had on that day, then shows the real box-score line
+for each player.
+
+| Today (Mar 15) — current roster | Two days back (Mar 13) — different players, real box scores |
+|---|---|
+| ![today's starting lineup with per-game averages](docs/screenshots/team-today.png) | ![historical roster with actual stats from that date](docs/screenshots/team-historical-detail.png) |
+
+### League — per-date standings + opponent inspection
+
+Every team's FPS on any given date, plus a clickable dialog showing what
+their roster looked like on that date.
+
+| Standings for Mar 15 (with format-aware status pills) | Any team → per-date roster with per-player FPS |
+|---|---|
+| ![full 12-team standings with FAAB + trades-closed pills](docs/screenshots/league.png) | ![opponent roster dialog with player-by-player FPS on selected date](docs/screenshots/opponent-roster-dialog.png) |
+
+### Players — league-wide leaderboard + deep drawer
+
+| Sortable leaderboard across 719 players | Player detail: windowed stats, game log, projections |
+|---|---|
+| ![players tab with ownership + projection columns](docs/screenshots/players-list.png) | ![Jokić drawer — Last 30 selected, stat tiles, game log with B2B tags](docs/screenshots/players-drawer.png) |
+
+### Trades + Waivers — three sub-tabs
+
+| Trade builder — pick partner, pick players, see live delta | Waiver Planner — multi-date calendar → ranked FAs |
+|---|---|
+| ![two-column trade builder with per-player FPS + running totals](docs/screenshots/trades-builder.png) | ![calendar with three March dates selected + FA ranking by window FPS](docs/screenshots/waiver-planner-inseason.png) |
+
+### Games — NBA scoreboard for any date
+
+![NBA scoreboard for Mar 15 with team logos and final scores](docs/screenshots/games.png)
 
 ---
 
