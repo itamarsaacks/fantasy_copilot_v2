@@ -92,6 +92,17 @@ their roster looked like on that date.
 
 ![NBA scoreboard for Mar 15 with team logos and final scores](docs/screenshots/games.png)
 
+### Evals — agent quality dashboard
+
+40 hand-authored cases × 4 phrasings each run against the real agent.
+Every run persists to Postgres with tool-call sequences, latencies,
+verdicts, and LangSmith trace links. Regressions surface automatically
+by comparing verdicts run-over-run.
+
+| Dashboard — aggregate view + regression detection | Run detail — every phrasing with tool count + verdict |
+|---|---|
+| ![Eval dashboard with total runs, latest pass rate 82.8%, cases on disk, regressions section, recent runs table](docs/screenshots/evals-dashboard.png) | ![Run #11 detail showing 157 phrasings across 40 cases with per-phrasing PASS/SOFT/FAIL and LangSmith trace links](docs/screenshots/evals-run-detail.png) |
+
 ---
 
 ## Architecture in a nutshell
