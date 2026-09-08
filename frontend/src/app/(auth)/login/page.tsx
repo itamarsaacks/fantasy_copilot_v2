@@ -40,9 +40,28 @@ function LoginInner() {
           </p>
         </div>
 
-        {error === "oauth" && (
-          <div className="text-sm text-destructive">
-            Yahoo sign-in failed. Try again.
+        {error && (
+          <div className="text-sm text-destructive space-y-1">
+            {error === "oauth" && <p>Yahoo sign-in failed. Try again.</p>}
+            {error === "oauth_exchange_failed" && (
+              <p>
+                Yahoo rejected the sign-in token. This usually means the
+                sign-in link was reused or expired — try again fresh.
+              </p>
+            )}
+            {(error === "oauth_guid_failed" || error === "oauth_no_guid") && (
+              <>
+                <p>
+                  Signed in, but Yahoo blocked our request to read your account
+                  (they returned &ldquo;Request denied&rdquo;).
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  This usually clears in an hour or two — Yahoo throttles repeated
+                  fantasy API calls from the same IP. Try again later, or from a
+                  different network.
+                </p>
+              </>
+            )}
           </div>
         )}
 

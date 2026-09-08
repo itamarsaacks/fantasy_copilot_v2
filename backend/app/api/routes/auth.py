@@ -14,7 +14,7 @@ from __future__ import annotations
 import secrets
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, BackgroundTasks, Cookie, Depends, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Cookie, Depends, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -67,8 +67,39 @@ async def yahoo_callback(
         # CSRF defense: state from query must match the state cookie we set.
         return RedirectResponse(url="/login?error=oauth", status_code=302)
 
-    # Step 3: exchange code for tokens
-    token_payload = await yahoo_client.exchange_code(code)
+    # Step 3: exchange code for tokens. Wrap so Yahoo failures produce a
+    # user-visible error page instead of a blank 500. Log the actual Yahoo
+    # response body so we can debug from logs without terminal access.
+    import logging
+    log = logging.getLogger(__name__)
+
+    def _debug(msg: str) -> None:
+        """Direct file append — bypass logging handler races under --reload."""
+        try:
+            from datetime import datetime as _dt
+            with open("/tmp/oauth_debug.log", "a") as _f:
+                _f.write(f"{_dt.utcnow().isoformat()} {msg}\n")
+        except Exception:
+            pass
+        log.error(msg)
+
+    try:
+        token_payload = await yahoo_client.exchange_code(code)
+    except Exception as exc:  # noqa: BLE001
+        body = getattr(getattr(exc, "response", None), "text", "")
+        _debug(f"OAuth exchange_code failed: {exc} | body={body[:500]}")
+        return RedirectResponse(
+            url="/login?error=oauth_exchange_failed", status_code=302,
+        )
+    # Log token metadata (never the tokens themselves) so we can see what
+    # scope + fields Yahoo actually granted.
+    _debug(
+        f"OAuth token payload keys={sorted(token_payload.keys())} "
+        f"scope={token_payload.get('scope')!r} "
+        f"token_type={token_payload.get('token_type')!r} "
+        f"expires_in={token_payload.get('expires_in')!r} "
+        f"xoauth_yahoo_guid={token_payload.get('xoauth_yahoo_guid')!r}"
+    )
     access_token = token_payload["access_token"]
     refresh_token = token_payload["refresh_token"]
     expires_in = int(token_payload.get("expires_in", 3600))
@@ -76,9 +107,19 @@ async def yahoo_callback(
     # Try it first, then fall back to a Fantasy API call.
     yahoo_guid = token_payload.get("xoauth_yahoo_guid")
     if not yahoo_guid:
-        yahoo_guid = await yahoo_client.fetch_user_guid(access_token)
+        try:
+            yahoo_guid = await yahoo_client.fetch_user_guid(access_token)
+        except Exception as exc:  # noqa: BLE001
+            body = getattr(getattr(exc, "response", None), "text", "")
+            _debug(f"OAuth fetch_user_guid failed: {exc} | body={body[:500]}")
+            return RedirectResponse(
+                url="/login?error=oauth_guid_failed", status_code=302,
+            )
     if not yahoo_guid:
-        raise HTTPException(status_code=502, detail="could not determine yahoo user guid")
+        _debug("OAuth: no xoauth_yahoo_guid in token payload and fetch_user_guid returned None")
+        return RedirectResponse(
+            url="/login?error=oauth_no_guid", status_code=302,
+        )
     expires_at = datetime.now(timezone.utc) + timedelta(seconds=expires_in)
 
     # Upsert user

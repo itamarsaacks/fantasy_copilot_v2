@@ -29,12 +29,24 @@ FANTASY_API_BASE = "https://fantasysports.yahooapis.com/fantasy/v2"
 
 
 def build_authorize_url(state: str) -> str:
-    """Step 1 of OAuth: where to send the user's browser."""
+    """Step 1 of OAuth: where to send the user's browser.
+
+    `scope=fspt-r` is REQUIRED — without it Yahoo issues a token with no
+    Fantasy Sports permission, and every subsequent /fantasy/v2/* call
+    returns 403 "This application is not authorized to perform this action".
+    (Historically Yahoo defaulted to granting all app-configured scopes when
+    the parameter was omitted; they tightened this in mid-2026 and now
+    strictly require explicit scope in the authorize request.)
+    """
     settings = get_settings()
     params = {
         "client_id": settings.yahoo_client_id,
         "redirect_uri": settings.yahoo_redirect_uri,
         "response_type": "code",
+        # Yahoo OAuth2 wants scopes space-separated. `openid` opts into
+        # returning `xoauth_yahoo_guid` in the token; `fspt-r` grants
+        # Fantasy Sports Read. Without openid we also lose the GUID.
+        "scope": "openid fspt-r",
         "state": state,
         "language": "en-us",
     }
