@@ -50,7 +50,11 @@ dev = [
     "pytest>=8.3",
     "pytest-asyncio>=0.24",
     "httpx>=0.28",  # used by FastAPI TestClient too
-    "ruff>=0.8",
+    # Ruff is pinned to a minor version. Ruff explicitly reserves the
+    # right to add rules in any minor release, which breaks CI whenever
+    # a new version ships. Bumping is a conscious decision — do it in
+    # a dedicated PR with a lint-cleanup pass.
+    "ruff>=0.15,<0.16",
 ]
 
 [tool.ruff]
