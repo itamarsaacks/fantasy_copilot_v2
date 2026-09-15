@@ -59,12 +59,28 @@ async def yahoo_callback(
     fc_oauth_state: str | None = Cookie(default=None),
     db: AsyncSession = Depends(get_session),
 ):
+    # Log preflight so we know which branch caused a generic ?error=oauth.
+    def _preflight(msg: str) -> None:
+        try:
+            from datetime import datetime as _dt
+            with open("/tmp/oauth_debug.log", "a") as _f:
+                _f.write(f"{_dt.utcnow().isoformat()} PREFLIGHT {msg}\n")
+        except Exception:
+            pass
+
     if error:
+        _preflight(f"yahoo returned error='{error}' (denied? invalid app?)")
         return RedirectResponse(url="/login?error=oauth", status_code=302)
     if not code:
+        _preflight("no ?code in callback URL — yahoo didn't send it")
         return RedirectResponse(url="/login?error=oauth", status_code=302)
     if not state or not fc_oauth_state or not secrets.compare_digest(state, fc_oauth_state):
         # CSRF defense: state from query must match the state cookie we set.
+        _preflight(
+            f"state mismatch: query_state={'set' if state else 'MISSING'}, "
+            f"cookie_state={'set' if fc_oauth_state else 'MISSING'}, "
+            f"match={state == fc_oauth_state if state and fc_oauth_state else 'n/a'}"
+        )
         return RedirectResponse(url="/login?error=oauth", status_code=302)
 
     # Step 3: exchange code for tokens. Wrap so Yahoo failures produce a
@@ -192,6 +208,40 @@ async def yahoo_callback(
         max_age=int(timedelta(days=30).total_seconds()),
     )
     response.delete_cookie(STATE_COOKIE)
+    return response
+
+
+@router.get("/demo")
+async def demo_login(
+    db: AsyncSession = Depends(get_session),
+):
+    """One-click demo sign-in as the seeded user.
+
+    Enabled when `DEMO_USER_ID` is set to a positive integer in backend/.env.
+    Mints a JWT for that user and redirects to /chat — no OAuth involved.
+    Read-only from the app's perspective (no writes to Yahoo).
+
+    Meant for portfolio / CV visits so recruiters can try the app without
+    connecting a Yahoo account. Set DEMO_USER_ID=0 (default) to disable.
+    """
+    settings = get_settings()
+    if not settings.demo_user_id or settings.demo_user_id <= 0:
+        return RedirectResponse(url="/login?error=demo_disabled", status_code=302)
+
+    user = await db.get(User, settings.demo_user_id)
+    if user is None:
+        return RedirectResponse(url="/login?error=demo_user_missing", status_code=302)
+
+    jwt_value = create_access_token(user.id)
+    response = RedirectResponse(url="/chat?demo=1", status_code=302)
+    response.set_cookie(
+        key=COOKIE_NAME,
+        value=jwt_value,
+        httponly=True,
+        secure=settings.cookie_secure,
+        samesite="lax",
+        max_age=int(timedelta(days=30).total_seconds()),
+    )
     return response
 
 

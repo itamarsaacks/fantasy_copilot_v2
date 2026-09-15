@@ -43,10 +43,10 @@ def build_authorize_url(state: str) -> str:
         "client_id": settings.yahoo_client_id,
         "redirect_uri": settings.yahoo_redirect_uri,
         "response_type": "code",
-        # Yahoo OAuth2 wants scopes space-separated. `openid` opts into
-        # returning `xoauth_yahoo_guid` in the token; `fspt-r` grants
-        # Fantasy Sports Read. Without openid we also lose the GUID.
-        "scope": "openid fspt-r",
+        # Fantasy Sports Read scope. `openid` used to be included for the
+        # GUID but Yahoo returns `invalid_scope` on some apps with it —
+        # dropped for the new-app path.
+        "scope": "fspt-r",
         "state": state,
         "language": "en-us",
     }

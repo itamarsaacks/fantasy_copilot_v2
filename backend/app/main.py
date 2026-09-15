@@ -168,4 +168,5 @@ async def health():
         "as_of_date": settings.as_of_date.isoformat() if settings.as_of_date else None,
         "features": sorted(f.value for f in enabled_features()),
         "sentry": bool(settings.sentry_dsn),
+        "demo_enabled": bool(settings.demo_user_id and settings.demo_user_id > 0),
     }

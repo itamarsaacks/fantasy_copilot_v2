@@ -1,14 +1,23 @@
 "use client";
 
-import Link from "next/link";
 import { buttonVariants } from "@/components/ui/button";
 import { Sparkles } from "lucide-react";
 import { useSearchParams } from "next/navigation";
-import { Suspense } from "react";
+import { Suspense, useEffect, useState } from "react";
+import { cn } from "@/lib/utils";
 
 function LoginInner() {
   const params = useSearchParams();
   const error = params.get("error");
+  const [demoEnabled, setDemoEnabled] = useState(false);
+
+  // Ask backend whether demo mode is turned on (DEMO_USER_ID set in .env).
+  useEffect(() => {
+    fetch("/health")
+      .then((r) => r.json())
+      .then((d) => setDemoEnabled(Boolean(d?.demo_enabled)))
+      .catch(() => setDemoEnabled(false));
+  }, []);
 
   return (
     <main className="min-h-dvh grid place-items-center px-6 bg-background">
@@ -24,19 +33,36 @@ function LoginInner() {
           </h1>
           <p className="text-muted-foreground leading-7">
             An AI copilot that knows your roster, league rules, free agents, and
-            projections. Connect your Yahoo league to start.
+            projections. Try the seeded demo — or connect your Yahoo league.
           </p>
         </div>
 
         <div className="space-y-3">
+          {demoEnabled && (
+            <a
+              href="/auth/demo"
+              className={
+                buttonVariants({ size: "lg" }) + " w-full h-12 text-base"
+              }
+            >
+              Try the Demo →
+            </a>
+          )}
           <a
             href="/auth/yahoo/login"
-            className={buttonVariants({ size: "lg" }) + " w-full h-12 text-base"}
+            className={cn(
+              demoEnabled
+                ? buttonVariants({ size: "lg", variant: "outline" })
+                : buttonVariants({ size: "lg" }),
+              "w-full h-12 text-base",
+            )}
           >
             Connect Yahoo
           </a>
           <p className="text-[12px] text-muted-foreground">
-            Read-only access · we never post on your behalf.
+            {demoEnabled
+              ? "Demo uses a seeded league so you can try the app instantly. Yahoo login is read-only and never posts on your behalf."
+              : "Read-only access · we never post on your behalf."}
           </p>
         </div>
 
@@ -56,20 +82,20 @@ function LoginInner() {
                   (they returned &ldquo;Request denied&rdquo;).
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  This usually clears in an hour or two — Yahoo throttles repeated
-                  fantasy API calls from the same IP. Try again later, or from a
-                  different network.
+                  Yahoo has stopped granting Fantasy Sports API scope during
+                  the offseason. Try the demo above, or come back once the new
+                  NBA season starts.
                 </p>
               </>
             )}
+            {error === "demo_disabled" && (
+              <p>Demo mode isn&apos;t enabled on this deployment.</p>
+            )}
+            {error === "demo_user_missing" && (
+              <p>Demo user isn&apos;t set up in the database.</p>
+            )}
           </div>
         )}
-
-        <div className="text-[12px] text-muted-foreground">
-          <Link href="/chat" className="underline underline-offset-4 hover:text-foreground">
-            Continue without signing in →
-          </Link>
-        </div>
       </div>
     </main>
   );

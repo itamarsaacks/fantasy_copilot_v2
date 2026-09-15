@@ -78,6 +78,13 @@ class Settings(BaseSettings):
     feature_category_league_ux: bool = False
     feature_billing: bool = False
 
+    # --- Demo mode
+    # When DEMO_USER_ID is set (a positive User.id), the /auth/demo endpoint
+    # mints a session for that user without any external OAuth. Meant for
+    # portfolio / CV demo access to a fully-seeded league. Leave empty (0)
+    # in real production to disable the demo entirely.
+    demo_user_id: int = 0
+
     # --- Observability
     # Sentry DSN — leave empty to disable error reporting (tests + CI).
     # In production this points at our Sentry project; we never report
