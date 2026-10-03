@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.connectors import yahoo as yahoo_client
 from app.db.models import League, Player, PlayerOwnershipEvent, Team, User
+from app.services.clock import resolve_today
 from app.services.yahoo_auth import get_fresh_access_token
 
 log = logging.getLogger(__name__)
@@ -49,8 +50,13 @@ async def _sync_draft(
         draft_at = datetime.fromtimestamp(int(draft_ts), tz=timezone.utc)
     except (TypeError, ValueError):
         # Fallback to a synthetic "early in season" date so the events
-        # still anchor before any post-draft trade.
-        draft_at = datetime(2025, 10, 1, tzinfo=timezone.utc)
+        # still anchor before any post-draft trade. Yahoo's NBA `season` is
+        # the starting year ("2026" = 2026-27).
+        try:
+            season_year = int(league.season)
+        except (TypeError, ValueError):
+            season_year = resolve_today().year
+        draft_at = datetime(season_year, 10, 1, tzinfo=timezone.utc)
 
     player_keys = {p["player_key"] for p in picks if p.get("player_key")}
     team_keys = {p["team_key"] for p in picks if p.get("team_key")}

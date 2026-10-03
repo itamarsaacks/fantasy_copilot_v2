@@ -211,9 +211,33 @@ npm run dev
 bash scripts/smoke.sh
 ```
 
-**Replay mode** (recommended for off-season / demo work): set
-`APP_MODE=replay` and `AS_OF_DATE=2026-03-15` in `backend/.env`. The whole
-app then behaves as if today is March 15, 2026 — mid-season, real data.
+### Daily start (four terminals, in this order)
+
+```bash
+docker compose up -d                                                          # 1. Postgres
+cd backend && .venv/bin/alembic upgrade head && .venv/bin/uvicorn app.main:app --reload --reload-dir app --port 8000   # 2. API
+cd frontend && npm run dev                                                    # 3. Web (proxies /auth, /api, /health to :8000)
+ngrok http 3000                                                               # 4. Public URL (your account's static domain; Yahoo's redirect URI must match it)
+```
+
+Check it's alive: `curl localhost:8000/health` shows `app_mode`, today's date
+and whether demo login is on.
+
+**Modes** (`backend/.env`):
+
+- `APP_MODE=replay` + `AS_OF_DATE=2026-03-15`: the app behaves as if today
+  is March 15, 2026, on the seeded 2025-26 data. Background Yahoo sync is off.
+- `APP_MODE=live` (no `AS_OF_DATE`): real today, background sync on. The
+  current NBA season is discovered automatically (`game_keys=nba`).
+- `DEMO_USER_ID=<user id>`: shows a one-click "Try the Demo" login.
+
+### Yahoo API access
+
+Since July 2026 Yahoo only serves Fantasy data to apps it has approved at
+[sports.yahoo.com/developer/access](https://sports.yahoo.com/developer/access/).
+Sign-in (OpenID) works without approval; every Fantasy call returns
+`403 "This application is not authorized"` until the app is approved, and the
+app shows a banner saying so.
 
 For agent workflow and repo conventions, see
 [`.claude/CLAUDE.md`](.claude/CLAUDE.md) and

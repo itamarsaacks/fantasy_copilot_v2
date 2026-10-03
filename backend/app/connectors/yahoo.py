@@ -5,15 +5,20 @@ Hard-won notes (do NOT lose):
   ignores the type filter. Use the first form when we add stat fetching.
 - The Fantasy API returns deeply nested mixed list/dict structures. Helpers
   here flatten them.
-- 2025-26 NBA game key = 466. We hard-code it; revisit each season.
+- `game_keys=nba` resolves to the CURRENT NBA season's game (466 = 2025-26).
+  We use the alias so a new season needs no code change.
+- Since 2026-07-22 Yahoo 403s every Fantasy endpoint ("This application is
+  not authorized") unless the app is approved at
+  https://sports.yahoo.com/developer/access/. OAuth itself still works.
 - Yahoo no longer reliably returns xoauth_yahoo_guid in the token response.
-  Use fetch_user_guid via /users;use_login=1 instead.
+  Request `openid` scope and read the GUID from the id_token `sub` claim.
 - FA fetching is paginated; default count=25, max=25. Use start= to page.
 """
 
 from __future__ import annotations
 
-from base64 import b64encode
+import json
+from base64 import b64encode, urlsafe_b64decode
 from typing import Any
 from urllib.parse import urlencode
 
@@ -21,7 +26,8 @@ import httpx
 
 from app.config import get_settings
 
-NBA_GAME_KEY = "466"  # 2025-26 season
+# Yahoo alias for "the current NBA season" — avoids a yearly hardcoded key.
+NBA_GAME_KEY = "nba"
 
 AUTHORIZE_URL = "https://api.login.yahoo.com/oauth2/request_auth"
 TOKEN_URL = "https://api.login.yahoo.com/oauth2/get_token"
@@ -34,19 +40,15 @@ def build_authorize_url(state: str) -> str:
     `scope=fspt-r` is REQUIRED — without it Yahoo issues a token with no
     Fantasy Sports permission, and every subsequent /fantasy/v2/* call
     returns 403 "This application is not authorized to perform this action".
-    (Historically Yahoo defaulted to granting all app-configured scopes when
-    the parameter was omitted; they tightened this in mid-2026 and now
-    strictly require explicit scope in the authorize request.)
     """
     settings = get_settings()
     params = {
         "client_id": settings.yahoo_client_id,
         "redirect_uri": settings.yahoo_redirect_uri,
         "response_type": "code",
-        # Fantasy Sports Read scope. `openid` used to be included for the
-        # GUID but Yahoo returns `invalid_scope` on some apps with it —
-        # dropped for the new-app path.
-        "scope": "fspt-r",
+        # openid -> id_token carrying the Yahoo GUID (see guid_from_id_token);
+        # fspt-r -> Fantasy Sports Read.
+        "scope": "openid fspt-r",
         "state": state,
         "language": "en-us",
     }
@@ -97,6 +99,29 @@ async def refresh_access_token(refresh_token: str) -> dict[str, Any]:
         )
     resp.raise_for_status()
     return resp.json()
+
+
+def guid_from_id_token(id_token: str | None) -> str | None:
+    """Read the Yahoo GUID (`sub` claim) from an OpenID id_token.
+
+    The signature is not verified: the token came straight from Yahoo's token
+    endpoint over TLS in exchange for our own auth code, so it is trusted.
+    """
+    if not id_token:
+        return None
+    try:
+        payload_b64 = id_token.split(".")[1]
+        payload_b64 += "=" * (-len(payload_b64) % 4)
+        return json.loads(urlsafe_b64decode(payload_b64)).get("sub")
+    except (IndexError, ValueError):
+        return None
+
+
+def is_not_authorized(exc: Exception) -> bool:
+    """True when Yahoo rejected the call because the APP lacks Fantasy access
+    (as opposed to an expired token or a transient failure)."""
+    resp = getattr(exc, "response", None)
+    return resp is not None and resp.status_code == 403 and "not authorized" in resp.text
 
 
 async def fetch_user_guid(access_token: str) -> str | None:

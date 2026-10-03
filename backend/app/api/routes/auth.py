@@ -11,6 +11,7 @@ Flow:
 
 from __future__ import annotations
 
+import logging
 import secrets
 from datetime import datetime, timedelta, timezone
 
@@ -25,6 +26,8 @@ from app.db.engine import get_session
 from app.db.models import League, User
 from app.jobs import freshness
 from app.security import COOKIE_NAME, create_access_token, get_current_user
+
+log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -59,83 +62,41 @@ async def yahoo_callback(
     fc_oauth_state: str | None = Cookie(default=None),
     db: AsyncSession = Depends(get_session),
 ):
-    # Log preflight so we know which branch caused a generic ?error=oauth.
-    def _preflight(msg: str) -> None:
-        try:
-            from datetime import datetime as _dt
-            with open("/tmp/oauth_debug.log", "a") as _f:
-                _f.write(f"{_dt.utcnow().isoformat()} PREFLIGHT {msg}\n")
-        except Exception:
-            pass
-
     if error:
-        _preflight(f"yahoo returned error='{error}' (denied? invalid app?)")
+        log.warning("oauth callback: yahoo returned error=%r", error)
         return RedirectResponse(url="/login?error=oauth", status_code=302)
     if not code:
-        _preflight("no ?code in callback URL — yahoo didn't send it")
+        log.warning("oauth callback: no code in callback URL")
         return RedirectResponse(url="/login?error=oauth", status_code=302)
     if not state or not fc_oauth_state or not secrets.compare_digest(state, fc_oauth_state):
         # CSRF defense: state from query must match the state cookie we set.
-        _preflight(
-            f"state mismatch: query_state={'set' if state else 'MISSING'}, "
-            f"cookie_state={'set' if fc_oauth_state else 'MISSING'}, "
-            f"match={state == fc_oauth_state if state and fc_oauth_state else 'n/a'}"
-        )
+        log.warning("oauth callback: state mismatch or missing state cookie")
         return RedirectResponse(url="/login?error=oauth", status_code=302)
-
-    # Step 3: exchange code for tokens. Wrap so Yahoo failures produce a
-    # user-visible error page instead of a blank 500. Log the actual Yahoo
-    # response body so we can debug from logs without terminal access.
-    import logging
-    log = logging.getLogger(__name__)
-
-    def _debug(msg: str) -> None:
-        """Direct file append — bypass logging handler races under --reload."""
-        try:
-            from datetime import datetime as _dt
-            with open("/tmp/oauth_debug.log", "a") as _f:
-                _f.write(f"{_dt.utcnow().isoformat()} {msg}\n")
-        except Exception:
-            pass
-        log.error(msg)
 
     try:
         token_payload = await yahoo_client.exchange_code(code)
     except Exception as exc:  # noqa: BLE001
         body = getattr(getattr(exc, "response", None), "text", "")
-        _debug(f"OAuth exchange_code failed: {exc} | body={body[:500]}")
-        return RedirectResponse(
-            url="/login?error=oauth_exchange_failed", status_code=302,
-        )
-    # Log token metadata (never the tokens themselves) so we can see what
-    # scope + fields Yahoo actually granted.
-    _debug(
-        f"OAuth token payload keys={sorted(token_payload.keys())} "
-        f"scope={token_payload.get('scope')!r} "
-        f"token_type={token_payload.get('token_type')!r} "
-        f"expires_in={token_payload.get('expires_in')!r} "
-        f"xoauth_yahoo_guid={token_payload.get('xoauth_yahoo_guid')!r}"
-    )
+        log.error("oauth exchange_code failed: %s | body=%s", exc, body[:500])
+        return RedirectResponse(url="/login?error=oauth_exchange_failed", status_code=302)
+
     access_token = token_payload["access_token"]
     refresh_token = token_payload["refresh_token"]
     expires_in = int(token_payload.get("expires_in", 3600))
-    # Yahoo no longer reliably returns xoauth_yahoo_guid in the token response.
-    # Try it first, then fall back to a Fantasy API call.
-    yahoo_guid = token_payload.get("xoauth_yahoo_guid")
+
+    # GUID: token response field -> id_token `sub` -> Fantasy API (last resort;
+    # 403s unless Yahoo has approved the app for Fantasy access).
+    yahoo_guid = token_payload.get("xoauth_yahoo_guid") or yahoo_client.guid_from_id_token(
+        token_payload.get("id_token")
+    )
     if not yahoo_guid:
         try:
             yahoo_guid = await yahoo_client.fetch_user_guid(access_token)
         except Exception as exc:  # noqa: BLE001
-            body = getattr(getattr(exc, "response", None), "text", "")
-            _debug(f"OAuth fetch_user_guid failed: {exc} | body={body[:500]}")
-            return RedirectResponse(
-                url="/login?error=oauth_guid_failed", status_code=302,
-            )
+            log.error("oauth fetch_user_guid failed: %s", exc)
+            return RedirectResponse(url="/login?error=oauth_guid_failed", status_code=302)
     if not yahoo_guid:
-        _debug("OAuth: no xoauth_yahoo_guid in token payload and fetch_user_guid returned None")
-        return RedirectResponse(
-            url="/login?error=oauth_no_guid", status_code=302,
-        )
+        return RedirectResponse(url="/login?error=oauth_no_guid", status_code=302)
     expires_at = datetime.now(timezone.utc) + timedelta(seconds=expires_in)
 
     # Upsert user
@@ -154,7 +115,7 @@ async def yahoo_callback(
     # Fetch + upsert leagues. Wrapped separately so a Yahoo league fetch failure
     # still leaves the user record + tokens intact.
     leagues_synced = 0
-    league_fetch_error: str | None = None
+    league_fetch_error: str | None = None  # short code, surfaced as ?warn=
     try:
         leagues = await yahoo_client.fetch_nba_leagues(access_token)
         for league_data in leagues:
@@ -175,8 +136,11 @@ async def yahoo_callback(
             league.season = league_data["season"]
             league.settings_json = league_data["settings_raw"]
             leagues_synced += 1
-    except Exception as exc:
-        league_fetch_error = str(exc)
+    except Exception as exc:  # noqa: BLE001
+        log.error("oauth league fetch failed: %s", exc)
+        league_fetch_error = (
+            "yahoo_not_approved" if yahoo_client.is_not_authorized(exc) else "league_fetch_failed"
+        )
 
     await db.commit()
 
@@ -189,13 +153,9 @@ async def yahoo_callback(
     # it's whatever domain serves both backend and frontend.
     jwt_value = create_access_token(user.id)
 
-    # Surface league_fetch_error via a query param so the frontend can show
-    # it. leagues_synced is informational — the user lands in /chat regardless.
-    redirect_target = "/chat"
-    if league_fetch_error:
-        # URL-encode minimally; this is dev-only diagnostic surface area.
-        from urllib.parse import urlencode
-        redirect_target = f"/chat?warn={urlencode({'msg': league_fetch_error})[4:]}"
+    # The user lands in /chat regardless; a league fetch failure rides along
+    # as a short code the frontend turns into a banner.
+    redirect_target = f"/chat?warn={league_fetch_error}" if league_fetch_error else "/chat"
 
     response = RedirectResponse(url=redirect_target, status_code=302)
     settings = get_settings()

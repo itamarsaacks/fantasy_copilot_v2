@@ -73,11 +73,13 @@ type Preset = {
   compute: () => { start: string; end: string };
 };
 
-// 2025-26 NBA regular season start. Used by the Stats-tab "Season" toggle to
-// fetch season-wide aggregates. Update each October to the new season's
-// opening day. Could move to backend health response later for true single
-// source of truth.
-const SEASON_START_ISO = "2025-10-21";
+// Start of the NBA season containing `anchor`, used by the Stats-tab "Season"
+// toggle. Oct 1 precedes every opening day, so the aggregate covers exactly
+// the season's games without a yearly hardcoded date.
+function seasonStartISO(anchor: Date): string {
+  const year = anchor.getMonth() >= 9 ? anchor.getFullYear() : anchor.getFullYear() - 1;
+  return `${year}-10-01`;
+}
 
 // Anchor-aware date helpers — every "today" in this file must respect
 // replay mode via the `anchor` Date (sourced from useAppToday). NEVER use
@@ -465,7 +467,7 @@ export function PlayerDetailDrawer({
     queryKey: ["player-detail-season", leagueId, playerId, appToday?.toISOString()],
     queryFn: () =>
       api<PlayerDetailResponse>(
-        `/api/players/${leagueId}/${playerId}?start=${SEASON_START_ISO}&end=${anchorISO(anchor)}`,
+        `/api/players/${leagueId}/${playerId}?start=${seasonStartISO(anchor)}&end=${anchorISO(anchor)}`,
       ),
     enabled:
       open && !!leagueId && !!playerId && statsView === "season" && !!appToday,

@@ -46,6 +46,7 @@ from app.db.models import User
 from app.jobs import freshness
 from app.observability import init_observability
 from app.security import COOKIE_NAME
+from app.services.clock import resolve_today
 
 log = logging.getLogger(__name__)
 
@@ -165,7 +166,9 @@ async def health():
     return {
         "status": "ok",
         "app_mode": settings.app_mode,
-        "as_of_date": settings.as_of_date.isoformat() if settings.as_of_date else None,
+        # Always the app's "today" (replay date or real date) — the frontend
+        # anchors every date window on it.
+        "as_of_date": resolve_today().isoformat(),
         "features": sorted(f.value for f in enabled_features()),
         "sentry": bool(settings.sentry_dsn),
         "demo_enabled": bool(settings.demo_user_id and settings.demo_user_id > 0),

@@ -2,6 +2,7 @@
 
 import { LeagueSwitcher } from "@/components/shell/league-switcher";
 import { ReconnectBanner } from "@/components/shell/reconnect-banner";
+import { SyncWarningBanner } from "@/components/shell/sync-warning-banner";
 import { Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -21,6 +22,7 @@ export function Topbar() {
         </Button>
       </div>
       <ReconnectBanner />
+      <SyncWarningBanner />
     </header>
   );
 }

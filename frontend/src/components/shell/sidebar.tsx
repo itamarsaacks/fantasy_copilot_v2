@@ -13,6 +13,7 @@ import {
 import { cn } from "@/lib/utils";
 import { RecentChats } from "@/components/shell/recent-chats";
 import { useMe } from "@/lib/hooks/use-me";
+import { useAppToday } from "@/lib/hooks/use-app-today";
 import { FlaskConical } from "lucide-react";
 
 // New tab order per master plan §1. /waivers folds into /trades as a
@@ -35,6 +36,7 @@ export function Sidebar() {
   const pathname = usePathname();
   const me = useMe();
   const isAdmin = !!me.data?.user?.is_admin;
+  const { appMode } = useAppToday();
   return (
     <aside
       className={cn(
@@ -121,7 +123,7 @@ export function Sidebar() {
 
       <div className="px-5 py-3 border-t border-sidebar-border mt-auto">
         <div className="text-[10px] uppercase tracking-widest text-muted-foreground">
-          Local · Replay
+          {appMode === "live" ? "Live" : appMode === "replay" ? "Replay" : "\u00a0"}
         </div>
       </div>
     </aside>

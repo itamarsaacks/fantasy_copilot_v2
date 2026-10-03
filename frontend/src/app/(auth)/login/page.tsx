@@ -77,14 +77,10 @@ function LoginInner() {
             )}
             {(error === "oauth_guid_failed" || error === "oauth_no_guid") && (
               <>
-                <p>
-                  Signed in, but Yahoo blocked our request to read your account
-                  (they returned &ldquo;Request denied&rdquo;).
-                </p>
+                <p>Signed in, but Yahoo wouldn&apos;t return your account ID.</p>
                 <p className="text-xs text-muted-foreground">
-                  Yahoo has stopped granting Fantasy Sports API scope during
-                  the offseason. Try the demo above, or come back once the new
-                  NBA season starts.
+                  Yahoo now requires apps to be approved for Fantasy data.
+                  Until this app is approved, try the demo above.
                 </p>
               </>
             )}
